@@ -1,0 +1,1 @@
+gcc -o rebol2 rebol2.c `pkg-config --cflags --libs gtk+-3.0`
