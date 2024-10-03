@@ -1,0 +1,1 @@
+gcc -o scrapelinkswithtext scrapelinkswithtext.c $(pkg-config --cflags --libs libcurl libxml-2.0)
