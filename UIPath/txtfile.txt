@@ -1,0 +1,3 @@
+Hi, this is a test to read the text in this file and copy to excel.
+
+Hope this works.
