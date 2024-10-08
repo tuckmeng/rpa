@@ -35,9 +35,7 @@ void OnMenuFileSaveAs();
 int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine, int nCmdShow)
 {
     // Initialize common controls
-    INITCOMMONCONTROLSEX icex;
-    icex.dwSize = sizeof(INITCOMMONCONTROLSEX);
-    icex.dwICC = ICC_WIN95_CLASSES;
+    INITCOMMONCONTROLSEX icex = {sizeof(INITCOMMONCONTROLSEX), ICC_WIN95_CLASSES};
     InitCommonControlsEx(&icex);
 
     // Register the window class
@@ -73,8 +71,8 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
     ShowWindow(hWnd, nCmdShow);
 
     // Run the message loop
-    MSG msg;
-    while (GetMessage(&msg, NULL, 0, 0)) // Corrected the parameters
+    MSG msg = {};
+    while (GetMessage(&msg, NULL, 0, 0))
     {
         TranslateMessage(&msg);
         DispatchMessage(&msg);
@@ -172,9 +170,7 @@ void CreateGrid(HWND parent)
     // Add columns
     for (int i = 0; i < INITIAL_COLS; ++i)
     {
-        LVCOLUMN lvc;
-        lvc.mask = LVCF_TEXT | LVCF_WIDTH;
-        lvc.cx = 80;
+        LVCOLUMN lvc = {LVCF_TEXT | LVCF_WIDTH, 0, 80};
         char colName[3] = { (char)('A' + i), '\0' };
         lvc.pszText = colName;
         ListView_InsertColumn(hGrid, i, &lvc);
@@ -183,22 +179,22 @@ void CreateGrid(HWND parent)
     // Add rows
     for (int i = 0; i < INITIAL_ROWS; ++i)
     {
-        ListView_InsertItem(hGrid, &LVITEM{ .iItem = i });
+        LVITEM lvi = {LVIF_TEXT, i, 0, 0, 0, NULL, 0};
+        ListView_InsertItem(hGrid, &lvi);
     }
 }
 
 void AddRow()
 {
     int newRow = ListView_GetItemCount(hGrid);
-    ListView_InsertItem(hGrid, &LVITEM{ .iItem = newRow });
+    LVITEM lvi = {LVIF_TEXT, newRow, 0, 0, 0, NULL, 0};
+    ListView_InsertItem(hGrid, &lvi);
 }
 
 void AddColumn()
 {
     int newCol = Header_GetItemCount(ListView_GetHeader(hGrid));
-    LVCOLUMN lvc;
-    lvc.mask = LVCF_TEXT | LVCF_WIDTH;
-    lvc.cx = 80;
+    LVCOLUMN lvc = {LVCF_TEXT | LVCF_WIDTH, 0, 80};
     char colName[3] = { (char)('A' + newCol), '\0' };
     lvc.pszText = colName;
     ListView_InsertColumn(hGrid, newCol, &lvc);
@@ -340,10 +336,8 @@ void OnMenuFileNew()
 
 void OnMenuFileSaveAs()
 {
-    char filename[MAX_PATH];
-    OPENFILENAME ofn;
-    ZeroMemory(filename, sizeof(filename));
-    ZeroMemory(&ofn, sizeof(ofn));
+    char filename[MAX_PATH] = {0};
+    OPENFILENAME ofn = {0};
     ofn.lStructSize = sizeof(ofn);
     ofn.hwndOwner = hWnd;
     ofn.lpstrFilter = "Excel Files (*.xlsx)\0*.xlsx\0All Files (*.*)\0*.*\0";
