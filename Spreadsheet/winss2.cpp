@@ -58,10 +58,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
         CLASS_NAME,                     // Window class
         "Simple Spreadsheet",           // Window text
         WS_OVERLAPPEDWINDOW,            // Window style
-
-        // Size and position
-        CW_USEDEFAULT, CW_USEDEFAULT, 800, 600,
-
+        CW_USEDEFAULT, CW_USEDEFAULT, 800, 600, // Size and position
         NULL,       // Parent window    
         NULL,       // Menu
         hInstance,  // Instance handle
@@ -76,8 +73,8 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
     ShowWindow(hWnd, nCmdShow);
 
     // Run the message loop
-    MSG msg = {};
-    while (GetMessage(&msg, NULL, 0, 0))
+    MSG msg;
+    while (GetMessage(&msg, NULL, 0, 0)) // Corrected the parameters
     {
         TranslateMessage(&msg);
         DispatchMessage(&msg);
@@ -123,6 +120,26 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
         return 0;
     }
 
+    case WM_KEYDOWN:
+    {
+        switch (wParam)
+        {
+        case VK_UP:
+            MoveFocus(current_row - 1, current_col);
+            break;
+        case VK_DOWN:
+            MoveFocus(current_row + 1, current_col);
+            break;
+        case VK_LEFT:
+            MoveFocus(current_row, current_col - 1);
+            break;
+        case VK_RIGHT:
+            MoveFocus(current_row, current_col + 1);
+            break;
+        }
+        return 0;
+    }
+
     case WM_DESTROY:
         SaveDataXLSX("auto_save.xlsx");
         PostQuitMessage(0);
@@ -135,7 +152,6 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
         SetWindowPos(hGrid, NULL, 0, 0, rcClient.right, rcClient.bottom, SWP_NOZORDER);
         return 0;
     }
-
     }
     return DefWindowProc(hwnd, uMsg, wParam, lParam);
 }
@@ -159,7 +175,7 @@ void CreateGrid(HWND parent)
         LVCOLUMN lvc;
         lvc.mask = LVCF_TEXT | LVCF_WIDTH;
         lvc.cx = 80;
-        char colName[3] = { (char)('A' + i), 0 };
+        char colName[3] = { (char)('A' + i), '\0' };
         lvc.pszText = colName;
         ListView_InsertColumn(hGrid, i, &lvc);
     }
@@ -183,7 +199,7 @@ void AddColumn()
     LVCOLUMN lvc;
     lvc.mask = LVCF_TEXT | LVCF_WIDTH;
     lvc.cx = 80;
-    char colName[3] = { (char)('A' + newCol), 0 };
+    char colName[3] = { (char)('A' + newCol), '\0' };
     lvc.pszText = colName;
     ListView_InsertColumn(hGrid, newCol, &lvc);
 }
@@ -222,47 +238,47 @@ void SaveDataXLSX(const char* filename)
     // Generate content types file
     std::ofstream contentTypes(std::string(tempDir) + "\\" + "[Content_Types].xml");
     contentTypes << "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n"
-                 << "<Types xmlns=\"http://schemas.openxmlformats.org/package/2006/content-types\">"
-                 << "<Default Extension=\"rels\" ContentType=\"application/vnd.openxmlformats-package.relationships+xml\"/>"
-                 << "<Default Extension=\"xml\" ContentType=\"application/xml\"/>"
-                 << "<Override PartName=\"/xl/workbook.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml\"/>"
-                 << "<Override PartName=\"/xl/worksheets/sheet1.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml\"/>"
-                 << "</Types>";
+        << "<Types xmlns=\"http://schemas.openxmlformats.org/package/2006/content-types\">"
+        << "<Default Extension=\"rels\" ContentType=\"application/vnd.openxmlformats-package.relationships+xml\"/>"
+        << "<Default Extension=\"xml\" ContentType=\"application/xml\"/>"
+        << "<Override PartName=\"/xl/workbook.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml\"/>"
+        << "<Override PartName=\"/xl/worksheets/sheet1.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml\"/>"
+        << "</Types>";
     contentTypes.close();
 
     // Generate _rels/.rels file
     CreateDirectory((std::string(tempDir) + "\\_rels").c_str(), NULL);
     std::ofstream rels(std::string(tempDir) + "\\_rels\\.rels");
     rels << "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n"
-         << "<Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\">"
-         << "<Relationship Id=\"rId1\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument\" Target=\"xl/workbook.xml\"/>"
-         << "</Relationships>";
+        << "<Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\">"
+        << "<Relationship Id=\"rId1\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument\" Target=\"xl/workbook.xml\"/>"
+        << "</Relationships>";
     rels.close();
 
     // Generate xl/workbook.xml file
     std::ofstream workbook(std::string(xlDir) + "\\workbook.xml");
     workbook << "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n"
-             << "<workbook xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\" xmlns:r=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships\">"
-             << "<sheets>"
-             << "<sheet name=\"Sheet1\" sheetId=\"1\" r:id=\"rId1\"/>"
-             << "</sheets>"
-             << "</workbook>";
+        << "<workbook xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\">"
+        << "<sheets>"
+        << "<sheet name=\"Sheet1\" sheetId=\"1\" rId=\"rId1\"/>"
+        << "</sheets>"
+        << "</workbook>";
     workbook.close();
 
     // Generate xl/_rels/workbook.xml.rels file
     CreateDirectory((std::string(xlDir) + "\\_rels").c_str(), NULL);
     std::ofstream workbookRels(std::string(xlDir) + "\\_rels\\workbook.xml.rels");
     workbookRels << "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n"
-                 << "<Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\">"
-                 << "<Relationship Id=\"rId1\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet\" Target=\"worksheets/sheet1.xml\"/>"
-                 << "</Relationships>";
+        << "<Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\">"
+        << "<Relationship Id=\"rId1\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet\" Target=\"worksheets/sheet1.xml\"/>"
+        << "</Relationships>";
     workbookRels.close();
 
     // Generate xl/worksheets/sheet1.xml file
     std::ofstream sheet(std::string(worksheetsDir) + "\\sheet1.xml");
     sheet << "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n"
-          << "<worksheet xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\">"
-          << "<sheetData>";
+        << "<worksheet xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\">"
+        << "<sheetData>";
 
     int rowCount = ListView_GetItemCount(hGrid);
     int colCount = Header_GetItemCount(ListView_GetHeader(hGrid));
@@ -280,7 +296,7 @@ void SaveDataXLSX(const char* filename)
             if (cellContent[0] != '\0')
             {
                 rowHasContent = true;
-                char colName[3] = { (char)('A' + j), 0 };
+                char colName[3] = { (char)('A' + j), '\0' };
                 rowContent << "<c r=\"" << colName << (i + 1) << "\" t=\"inlineStr\"><is><t>" << cellContent << "</t></is></c>";
             }
         }
@@ -315,7 +331,7 @@ void OnMenuFileNew()
     {
         for (int j = 0; j < colCount; ++j)
         {
-            ListView_SetItemText(hGrid, i, j, (LPSTR)"");
+            ListView_SetItemText(hGrid, i, j, "");
         }
     }
 
@@ -326,13 +342,13 @@ void OnMenuFileSaveAs()
 {
     char filename[MAX_PATH];
     OPENFILENAME ofn;
-    ZeroMemory(&filename, sizeof(filename));
+    ZeroMemory(filename, sizeof(filename));
     ZeroMemory(&ofn, sizeof(ofn));
     ofn.lStructSize = sizeof(ofn);
     ofn.hwndOwner = hWnd;
     ofn.lpstrFilter = "Excel Files (*.xlsx)\0*.xlsx\0All Files (*.*)\0*.*\0";
     ofn.lpstrFile = filename;
-    ofn.nMaxFile = MAX_PATH;
+    ofn.nMaxFile = sizeof(filename);
     ofn.lpstrDefExt = "xlsx";
     ofn.Flags = OFN_EXPLORER | OFN_PATHMUSTEXIST | OFN_HIDEREADONLY | OFN_OVERWRITEPROMPT;
 
