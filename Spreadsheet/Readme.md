@@ -1,0 +1,1 @@
+RPA programs usually require a spreadsheet as a data store such that the results can be manipulated in other ways. Excel is too heavy for RPA purposes, so this is my attempt to create a program to store and save data in Excel format.
