@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Days Between</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            margin-top: 50px;
+        }
+        button {
+            width: 200px;
+            height: 40px;
+            margin: 10px;
+            font-size: 16px;
+        }
+        input {
+            width: 200px;
+            height: 40px;
+            font-size: 16px;
+            text-align: center;
+        }
+    </style>
+</head>
+<body>
+    <button id="startBtn">Start</button>
+    <button id="endBtn">End</button>
+    <p>Days Between:</p>
+    <input type="text" id="resultField" readonly>
+
+    <script>
+        let startDate;
+        const resultField = document.getElementById('resultField');
+
+        document.getElementById('startBtn').onclick = function() {
+            startDate = prompt("Enter the start date (YYYY-MM-DD):");
+            if (startDate) {
+                const date = new Date(startDate);
+                if (isNaN(date.getTime())) {
+                    alert("Invalid date. Please use the format YYYY-MM-DD.");
+                    startDate = null;
+                }
+            }
+        };
+
+        document.getElementById('endBtn').onclick = function() {
+            const endDate = prompt("Enter the end date (YYYY-MM-DD):");
+            if (startDate && endDate) {
+                const start = new Date(startDate);
+                const end = new Date(endDate);
+                const daysBetween = Math.ceil((end - start) / (1000 * 60 * 60 * 24));
+                resultField.value = daysBetween;
+            } else {
+                alert("Please select a start date first.");
+            }
+        };
+    </script>
+</body>
+</html>
