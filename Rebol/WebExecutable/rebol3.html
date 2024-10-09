@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Web Page Editor</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+            padding: 20px;
+            border: 1px solid #ccc;
+            border-radius: 5px;
+            max-width: 800px;
+        }
+        textarea {
+            width: 100%;
+            height: 440px;
+            margin-top: 10px;
+        }
+        button {
+            margin: 5px;
+            padding: 10px;
+        }
+    </style>
+</head>
+<body>
+
+<p>This demo will only work if you serve it on a webserver under https. <br>
+If you serve it under http, you can only download http webpages like http://httpbin.org/, not https webpages. <br>
+You also need the webserver to serve out a header Access-Control-Allow-Origin: * so that the browser knows this webpage can access other webpages on other domains.
+</p>
+
+    <label for="url">Page to Read:</label>
+    <input type="text" id="url" value="ftp://user:pass@website.com/path/page.html" style="width: 100%;"/>
+
+    <label for="htmlContent">The HTML:</label>
+    <textarea id="htmlContent"></textarea>
+
+    <div>
+        <button onclick="downloadHtml()">Download HTML Page</button>
+        <button onclick="loadLocalFile()">Load Local HTML File</button>
+        <button onclick="saveToWeb()">Save Changes to Web Site</button>
+        <button onclick="saveToLocalFile()">Save Changes to Local File</button>
+    </div>
+
+    <input type="file" id="fileInput" style="display: none;" accept=".html"/>
+
+    <script>
+        async function downloadHtml() {
+            const url = document.getElementById('url').value;
+            try {
+                const response = await fetch(url);
+                if (!response.ok) throw new Error('Network response was not ok');
+                const text = await response.text();
+                document.getElementById('htmlContent').value = text;
+            } catch (error) {
+                alert('Error fetching HTML: ' + error.message);
+            }
+        }
+
+        function loadLocalFile() {
+            const fileInput = document.getElementById('fileInput');
+            fileInput.click();
+            fileInput.onchange = async (event) => {
+                const file = event.target.files[0];
+                if (file) {
+                    const reader = new FileReader();
+                    reader.onload = (e) => {
+                        document.getElementById('htmlContent').value = e.target.result;
+                    };
+                    reader.readAsText(file);
+                }
+            };
+        }
+
+        async function saveToWeb() {
+            const url = document.getElementById('url').value;
+            const text = document.getElementById('htmlContent').value;
+            try {
+                await fetch(url, {
+                    method: 'PUT',
+                    body: text,
+                    headers: {
+                        'Content-Type': 'text/html'
+                    }
+                });
+                alert('Changes saved to web site.');
+            } catch (error) {
+                alert('Error saving to web site: ' + error.message);
+            }
+        }
+
+        function saveToLocalFile() {
+            const text = document.getElementById('htmlContent').value;
+            const blob = new Blob([text], { type: 'text/html' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'edited_page.html';
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+        }
+    </script>
+
+</body>
+</html>
