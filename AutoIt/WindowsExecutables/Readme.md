@@ -1,1 +1,1 @@
-These are the windows executables of the RPA programs from Visual Studio 2022
+These are the windows executables of the RPA programs from Visual Studio 2022. RPA6.exe was tested to compile under GCC cross compiler x86_64-w64-mingw32-gcc and hence the Makefile is provided. Use bash Makefile.rpa6 to build the program.
