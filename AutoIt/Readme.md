@@ -9,3 +9,6 @@ The inspiration for this repo came from the AutoItScript website. Compared to ot
 It doesn't help that there is malware written using AutoIt and hence it won't be surprising if your legit AutoItScript script running on your PC is identified as a malware in some future point of time.
 
 I can't capture the screenshot for RPA2.exe as the notepad automation happens too fast, so you can download it and try it out yourself.
+
+The sample programs are selected from https://www.autoitscript.com/autoit3/docs/tutorials/ . 
+Examples to test are to do show alerts, do regular expressions, send keystrokes to applications and design gui windows.
