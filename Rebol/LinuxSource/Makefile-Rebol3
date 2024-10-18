@@ -1,1 +1,1 @@
-gcc -o rebol3 rebol3.c `pkg-config --cflags --libs gtk+-3.0`
+gcc -o rebol3 rebol3.c `pkg-config --cflags --libs gtk+-3.0` -lcurl -lgthread-2.0 -pthread
