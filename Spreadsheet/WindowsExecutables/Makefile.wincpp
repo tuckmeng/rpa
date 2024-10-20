@@ -1,3 +1,0 @@
-x86_64-w64-mingw32-g++ -std=c++17 -static -o winss.exe winss.cpp -mwindows
-x86_64-w64-mingw32-strip winss.exe
-
