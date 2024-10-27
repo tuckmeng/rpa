@@ -1,0 +1,1 @@
+x86_64-w64-mingw32-g++ -static -o TextEditor3.exe TextEditor3.cpp -mwindows

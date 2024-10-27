@@ -1,0 +1,1 @@
+x86_64-w64-mingw32-g++ -o TextEditor2.exe TextEditor2.cpp -static -lcomdlg32 -luser32 -lcomctl32
