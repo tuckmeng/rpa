@@ -1,0 +1,307 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TextPad</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 0;
+        }
+
+        .menu {
+            background: #333;
+            padding: 10px;
+            display: flex;
+            justify-content: space-between;
+        }
+
+        .menu button {
+            color: white;
+            background: transparent;
+            border: none;
+            padding: 10px 15px;
+            cursor: pointer;
+        }
+
+        .menu button:hover {
+            background: #555;
+        }
+
+        #editor {
+            width: 100%;
+            height: calc(100vh - 50px);
+            border: none;
+            padding: 10px;
+            font-size: 16px;
+            resize: none;
+        }
+
+        .modal {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            position: fixed;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.5);
+        }
+
+        .modal-content {
+            background: white;
+            padding: 20px;
+            border-radius: 5px;
+            text-align: center;
+        }
+
+        .close {
+            cursor: pointer;
+            float: right;
+            font-size: 20px;
+        }
+
+        .status {
+            color: white;
+            padding: 10px;
+        }
+    </style>
+</head>
+<body>
+    <div class="menu">
+        <div>
+            <button onclick="clearEditor()">New</button>
+            <button onclick="openFile()">Open</button>
+            <button onclick="saveFile()">Save</button>
+            <button onclick="saveAsFile()">Save As</button>
+            <button onclick="goToLine()">Go To Line</button>
+            <button onclick="searchString()">Search String</button>
+            <button onclick="searchRegexp()">Search Regexp</button>
+            <button onclick="replaceString()">Replace String</button>
+            <button onclick="replaceRegexp()">Replace Regexp String</button>
+        </div>
+        <div class="status" id="status">Line: 1, Column: 1</div>
+    </div>
+    <textarea id="editor" placeholder="Start typing..." 
+              oninput="updateCursorPosition()" 
+              onkeydown="updateCursorPosition()" 
+              onmousemove="updateCursorPosition()"
+              onmouseup="updateCursorPosition()"></textarea>
+
+    <div id="modal" class="modal" style="display: none;">
+        <div class="modal-content">
+            <span class="close" onclick="closeModal()">&times;</span>
+            <label for="line-number">Line Number:</label>
+            <input type="number" id="line-number" min="1">
+            <button onclick="gotoLine()">Go</button>
+        </div>
+    </div>
+
+    <div id="search-modal" class="modal" style="display: none;">
+        <div class="modal-content">
+            <span class="close" onclick="closeSearchModal()">&times;</span>
+            <label for="search-term">Search Term:</label>
+            <input type="text" id="search-term">
+            <button onclick="performSearch()">Search</button>
+        </div>
+    </div>
+
+    <div id="regexp-modal" class="modal" style="display: none;">
+        <div class="modal-content">
+            <span class="close" onclick="closeRegexpModal()">&times;</span>
+            <label for="regexp-term">Search Regexp:</label>
+            <input type="text" id="regexp-term">
+            <button onclick="performRegexpSearch()">Search</button>
+        </div>
+    </div>
+
+    <div id="replace-modal" class="modal" style="display: none;">
+        <div class="modal-content">
+            <span class="close" onclick="closeReplaceModal()">&times;</span>
+            <label for="replace-search">Replace String:</label>
+            <input type="text" id="replace-search">
+            <label for="replace-with">With:</label>
+            <input type="text" id="replace-with">
+            <button onclick="performReplace()">Replace</button>
+        </div>
+    </div>
+
+    <div id="replace-regexp-modal" class="modal" style="display: none;">
+        <div class="modal-content">
+            <span class="close" onclick="closeReplaceRegexpModal()">&times;</span>
+            <label for="regexp-replace">Replace Regexp:</label>
+            <input type="text" id="regexp-replace">
+            <label for="regexp-with">With:</label>
+            <input type="text" id="regexp-with">
+            <button onclick="performRegexpReplace()">Replace</button>
+        </div>
+    </div>
+
+    <script>
+        let currentFileName = '';
+
+        function clearEditor() {
+            document.getElementById('editor').value = '';
+            updateCursorPosition();
+        }
+
+        function openFile() {
+            const input = document.createElement('input');
+            input.type = 'file';
+            input.accept = '.txt';
+            input.onchange = e => {
+                const file = e.target.files[0];
+                const reader = new FileReader();
+                reader.onload = function(event) {
+                    document.getElementById('editor').value = event.target.result;
+                    currentFileName = file.name;
+                    updateCursorPosition(); // Update position on file open
+                };
+                reader.readAsText(file);
+            };
+            input.click();
+        }
+
+        function saveFile() {
+            if (!currentFileName) {
+                return saveAsFile();
+            }
+            download(currentFileName, document.getElementById('editor').value);
+        }
+
+        function saveAsFile() {
+            const filename = prompt("Enter file name:", "newfile.txt");
+            if (filename) {
+                download(filename, document.getElementById('editor').value);
+                currentFileName = filename;
+            }
+        }
+
+        function download(filename, text) {
+            const element = document.createElement('a');
+            const file = new Blob([text], {type: 'text/plain'});
+            element.href = URL.createObjectURL(file);
+            element.download = filename;
+            document.body.appendChild(element);
+            element.click();
+            document.body.removeChild(element);
+        }
+
+        function goToLine() {
+            document.getElementById('modal').style.display = 'flex';
+        }
+
+        function gotoLine() {
+            const lineNumber = parseInt(document.getElementById('line-number').value);
+            const lines = document.getElementById('editor').value.split('\n');
+            if (lineNumber > 0 && lineNumber <= lines.length) {
+                const start = lines.slice(0, lineNumber - 1).join('\n').length + (lineNumber - 1);
+                const end = start + lines[lineNumber - 1].length;
+                const editor = document.getElementById('editor');
+                editor.setSelectionRange(start, end);
+                editor.focus();
+            } else {
+                alert("Invalid line number");
+            }
+            closeModal();
+        }
+
+        function searchString() {
+            document.getElementById('search-modal').style.display = 'flex';
+        }
+
+        function performSearch() {
+            const searchTerm = document.getElementById('search-term').value;
+            const editor = document.getElementById('editor');
+            const text = editor.value;
+            const index = text.indexOf(searchTerm);
+            if (index !== -1) {
+                editor.setSelectionRange(index, index + searchTerm.length);
+                editor.focus();
+            } else {
+                alert("Search term not found.");
+            }
+            closeSearchModal();
+        }
+
+        function searchRegexp() {
+            document.getElementById('regexp-modal').style.display = 'flex';
+        }
+
+        function performRegexpSearch() {
+            const regexpTerm = document.getElementById('regexp-term').value;
+            const editor = document.getElementById('editor');
+            const text = editor.value;
+            const regex = new RegExp(regexpTerm);
+
+            const match = regex.exec(text);
+            if (match) {
+                const index = match.index;
+                editor.setSelectionRange(index, index + match[0].length);
+                editor.focus();
+            } else {
+                alert("Regexp term not found.");
+            }
+            closeRegexpModal();
+        }
+
+        function replaceString() {
+            document.getElementById('replace-modal').style.display = 'flex';
+        }
+
+        function performReplace() {
+            const searchTerm = document.getElementById('replace-search').value;
+            const replaceWith = document.getElementById('replace-with').value;
+            const editor = document.getElementById('editor');
+            editor.value = editor.value.split(searchTerm).join(replaceWith);
+            closeReplaceModal();
+        }
+
+        function replaceRegexp() {
+            document.getElementById('replace-regexp-modal').style.display = 'flex';
+        }
+
+        function performRegexpReplace() {
+            const regexpReplace = document.getElementById('regexp-replace').value;
+            const replaceWith = document.getElementById('regexp-with').value;
+            const editor = document.getElementById('editor');
+            const regex = new RegExp(regexpReplace, 'g');
+            editor.value = editor.value.replace(regex, replaceWith);
+            closeReplaceRegexpModal();
+        }
+
+        function closeModal() {
+            document.getElementById('modal').style.display = 'none';
+        }
+
+        function closeSearchModal() {
+            document.getElementById('search-modal').style.display = 'none';
+        }
+
+        function closeRegexpModal() {
+            document.getElementById('regexp-modal').style.display = 'none';
+        }
+
+        function closeReplaceModal() {
+            document.getElementById('replace-modal').style.display = 'none';
+        }
+
+        function closeReplaceRegexpModal() {
+            document.getElementById('replace-regexp-modal').style.display = 'none';
+        }
+
+        function updateCursorPosition() {
+            const editor = document.getElementById('editor');
+            const cursorPosition = editor.selectionStart;
+            const text = editor.value.substring(0, cursorPosition);
+            const lineNumber = text.split('\n').length;
+            const columnNumber = cursorPosition - text.lastIndexOf('\n');
+
+            document.getElementById('status').innerText = `Line: ${lineNumber}, Column: ${columnNumber}`;
+        }
+    </script>
+</body>
+</html>
