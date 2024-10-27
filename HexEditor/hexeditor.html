@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Binary File Editor</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            padding: 20px;
+            background-color: #f4f4f4;
+        }
+        #editorContainer {
+            display: flex;
+            margin-bottom: 20px;
+        }
+        #hexView {
+            margin-right: 20px;
+        }
+        .hexRow {
+            display: flex;
+        }
+        .hexCell, .asciiChar {
+            width: 40px;
+            height: 40px;
+            border: 1px solid #ccc;
+            text-align: center;
+            line-height: 40px;
+            font-family: monospace;
+            cursor: text;
+        }
+        .hexCell.selected {
+            background-color: #b3d4fc;
+        }
+        .asciiRow {
+            display: flex;
+        }
+        .asciiChar {
+            height: 40px;
+        }
+        .asciiChar.highlight {
+            background-color: #b3d4fc;
+        }
+        #offsetDisplay {
+            margin-top: 10px;
+        }
+    </style>
+</head>
+<body>
+
+<h1>Binary File Editor</h1>
+<input type="file" id="fileInput" accept=".bin">
+<button id="loadButton">Load</button>
+<button id="saveButton">Save</button>
+<div id="editorContainer">
+    <div id="hexView"></div>
+    <div id="asciiView"></div>
+</div>
+<div id="offsetDisplay"></div>
+
+<script>
+    const fileInput = document.getElementById('fileInput');
+    const loadButton = document.getElementById('loadButton');
+    const saveButton = document.getElementById('saveButton');
+    const hexView = document.getElementById('hexView');
+    const asciiView = document.getElementById('asciiView');
+    const offsetDisplay = document.getElementById('offsetDisplay');
+    let binaryData;
+
+    loadButton.addEventListener('click', () => {
+        const file = fileInput.files[0];
+        if (file) {
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                binaryData = new Uint8Array(e.target.result);
+                renderEditor();
+            };
+            reader.readAsArrayBuffer(file);
+        } else {
+            alert("Please select a file to load.");
+        }
+    });
+
+    function renderEditor() {
+        hexView.innerHTML = ''; // Clear previous content
+        asciiView.innerHTML = ''; // Clear previous content
+        offsetDisplay.innerHTML = ''; // Clear offset display
+
+        for (let i = 0; i < binaryData.length; i += 16) {
+            const hexRow = document.createElement('div');
+            hexRow.className = 'hexRow';
+
+            for (let j = 0; j < 16; j++) {
+                const index = i + j;
+                if (index < binaryData.length) {
+                    const hexCell = document.createElement('input');
+                    hexCell.className = 'hexCell';
+                    hexCell.value = binaryData[index].toString(16).padStart(2, '0').toUpperCase();
+                    hexCell.dataset.index = index;
+
+                    hexCell.addEventListener('input', () => updateData(index, hexCell.value, 'hex'));
+                    hexCell.addEventListener('focus', () => selectCell(index));
+
+                    hexRow.appendChild(hexCell);
+                }
+            }
+            hexView.appendChild(hexRow);
+        }
+
+        // Create ASCII representation
+        for (let i = 0; i < binaryData.length; i += 16) {
+            const asciiRow = document.createElement('div');
+            asciiRow.className = 'asciiRow';
+
+            for (let j = 0; j < 16; j++) {
+                const index = i + j;
+                const asciiChar = document.createElement('input');
+                asciiChar.className = 'asciiChar';
+                asciiChar.value = (index < binaryData.length && binaryData[index] >= 32 && binaryData[index] < 127) 
+                    ? String.fromCharCode(binaryData[index]) 
+                    : '.';
+                asciiChar.dataset.index = index;
+
+                asciiChar.addEventListener('input', () => updateData(index, asciiChar.value, 'ascii'));
+                asciiChar.addEventListener('focus', () => selectCell(index));
+
+                asciiRow.appendChild(asciiChar);
+            }
+            asciiView.appendChild(asciiRow);
+        }
+    }
+
+    function updateData(index, value, type) {
+        if (type === 'hex') {
+            const intValue = parseInt(value, 16);
+            if (!isNaN(intValue) && intValue >= 0 && intValue <= 255) {
+                binaryData[index] = intValue;
+                const asciiInput = document.querySelector(`.asciiChar[data-index="${index}"]`);
+                asciiInput.value = String.fromCharCode(intValue);
+            } else {
+                alert("Invalid hex value. Please enter a valid byte (00 to FF).");
+                renderEditor(); // Reset to previous state
+            }
+        } else if (type === 'ascii') {
+            const charCode = value.charCodeAt(0);
+            if (charCode >= 0 && charCode <= 255) {
+                binaryData[index] = charCode;
+                const hexInput = document.querySelector(`.hexCell[data-index="${index}"]`);
+                hexInput.value = charCode.toString(16).padStart(2, '0').toUpperCase();
+            } else {
+                alert("Invalid ASCII value. Please enter a valid character.");
+                renderEditor(); // Reset to previous state
+            }
+        }
+    }
+
+    function selectCell(index) {
+        const hexCells = document.querySelectorAll('.hexCell');
+        const asciiChars = document.querySelectorAll('.asciiChar');
+
+        hexCells.forEach(cell => cell.classList.remove('selected'));
+        asciiChars.forEach(char => char.classList.remove('highlight'));
+
+        hexCells[index % 16].classList.add('selected');
+        asciiChars[Math.floor(index / 16)].children[index % 16].classList.add('highlight');
+
+        // Display the offset of the selected byte
+        offsetDisplay.innerText = `Offset ${index.toString(16).padStart(8, '0')}`;
+    }
+
+    saveButton.addEventListener('click', () => {
+        if (binaryData) {
+            const blob = new Blob([binaryData], { type: 'application/octet-stream' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'edited.bin';
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+        } else {
+            alert("No data to save. Please load a binary file first.");
+        }
+    });
+</script>
+
+</body>
+</html>
