@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Dynamic Spreadsheet</title>
+    <style>
+        .controls { padding: 20px; gap: 10px; display: flex; align-items: center; }
+        .container { display: flex; gap: 20px; padding: 20px; }
+        table { border-collapse: collapse; margin-top: 10px; }
+        td { border: 1px solid #999; padding: 0; }
+        input[type="number"] { width: 60px; padding: 4px; }
+        input.cell { width: 80px; height: 24px; border: none; padding: 4px; }
+        button { padding: 8px 16px; cursor: pointer; }
+    </style>
+</head>
+<body>
+    <div class="controls">
+        <label>Rows: <input type="number" id="rowCount" value="5" min="1"></label>
+        <label>Columns: <input type="number" id="colCount" value="5" min="1"></label>
+        <button id="updateSizeBtn">Update Size</button>
+        <button id="saveButton">Save as XLSX</button>
+    </div>
+    
+    <div class="container">
+        <table id="spreadsheet">
+            <tbody></tbody>
+        </table>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+
+    <script>
+    document.addEventListener('DOMContentLoaded', () => {
+        // Initial grid
+        generateGrid(5, 5);
+        
+        // Event listeners
+        document.getElementById('updateSizeBtn').addEventListener('click', updateGridSize);
+        document.getElementById('saveButton').addEventListener('click', saveXLSX);
+    });
+
+    function updateGridSize() {
+        const rows = parseInt(document.getElementById('rowCount').value) || 5;
+        const cols = parseInt(document.getElementById('colCount').value) || 5;
+        generateGrid(rows, cols);
+    }
+
+    function generateGrid(rows, cols) {
+        const tbody = document.querySelector('#spreadsheet tbody');
+        tbody.innerHTML = '';
+        
+        for(let i = 0; i < rows; i++) {
+            const tr = document.createElement('tr');
+            for(let j = 0; j < cols; j++) {
+                const td = document.createElement('td');
+                td.innerHTML = '<input class="cell">';
+                tr.appendChild(td);
+            }
+            tbody.appendChild(tr);
+        }
+    }
+
+    async function saveXLSX() {
+        const zip = new JSZip();
+        
+        // Create directory structure
+        const xl = zip.folder("xl");
+        const rels = zip.folder("_rels");
+        const xlRels = xl.folder("_rels");
+        const xlWorksheets = xl.folder("worksheets");
+
+        // [Content_Types].xml
+        zip.file("[Content_Types].xml", `<?xml version="1.0" encoding="UTF-8"?>
+<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
+    <Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
+    <Default Extension="xml" ContentType="application/xml"/>
+    <Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>
+    <Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>
+    <Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/>
+</Types>`);
+
+        // _rels/.rels
+        rels.file(".rels", `<?xml version="1.0" encoding="UTF-8"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+    <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/>
+</Relationships>`);
+
+        // xl/workbook.xml
+        xl.file("workbook.xml", `<?xml version="1.0" encoding="UTF-8"?>
+<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
+    <sheets>
+        <sheet name="Sheet1" sheetId="1" r:id="rId1"/>
+    </sheets>
+</workbook>`);
+
+        // xl/_rels/workbook.xml.rels
+        xlRels.file("workbook.xml.rels", `<?xml version="1.0" encoding="UTF-8"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+    <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/>
+    <Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>
+</Relationships>`);
+
+        // xl/styles.xml
+        xl.file("styles.xml", `<?xml version="1.0" encoding="UTF-8"?>
+<styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
+    <fonts count="1"><font/></fonts>
+    <fills count="1"><fill/></fills>
+    <borders count="1"><border/></borders>
+    <cellStyleXfs count="1"><xf/></cellStyleXfs>
+    <cellXfs count="1"><xf numFmtId="0"/></cellXfs>
+</styleSheet>`);
+
+        // xl/worksheets/sheet1.xml
+        xlWorksheets.file("sheet1.xml", createWorksheetXML());
+
+        // Generate ZIP
+        const blob = await zip.generateAsync({
+            type: "blob",
+            mimeType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            compression: "DEFLATE"
+        });
+        
+        // Trigger download
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = "spreadsheet.xlsx";
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+    }
+
+    function createWorksheetXML() {
+        const rows = document.querySelectorAll('#spreadsheet tr');
+        if(rows.length === 0) return '';
+        
+        const colCount = rows[0].querySelectorAll('td').length;
+        const lastCol = getColumnName(colCount);
+        const lastRow = rows.length;
+        
+        let xml = `<?xml version="1.0" encoding="UTF-8"?>
+<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"
+           xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
+    <dimension ref="A1:${lastCol}${lastRow}"/>
+    <sheetViews>
+        <sheetView workbookViewId="0"/>
+    </sheetViews>
+    <sheetFormatPr defaultRowHeight="15"/>
+    <sheetData>`;
+
+        rows.forEach((row, rowIdx) => {
+            xml += `<row r="${rowIdx + 1}">`;
+            row.querySelectorAll('.cell').forEach((input, colIdx) => {
+                const cellRef = `${getColumnName(colIdx + 1)}${rowIdx + 1}`;
+                const value = input.value.trim();
+                xml += `<c r="${cellRef}" t="inlineStr">`;
+                xml += `<is><t>${escapeXML(value)}</t></is>`;
+                xml += `</c>`;
+            });
+            xml += `</row>`;
+        });
+
+        xml += `</sheetData></worksheet>`;
+        return xml;
+    }
+
+    function getColumnName(n) {
+        let name = '';
+        while(n > 0) {
+            const remainder = (n - 1) % 26;
+            name = String.fromCharCode(65 + remainder) + name;
+            n = Math.floor((n - 1) / 26);
+        }
+        return name;
+    }
+
+    function escapeXML(str) {
+        return str.replace(/[&<>"']/g, m => ({
+            '&': '&amp;',
+            '<': '&lt;',
+            '>': '&gt;',
+            '"': '&quot;',
+            "'": '&apos;'
+        }[m]));
+    }
+    </script>
+</body>
+</html>
