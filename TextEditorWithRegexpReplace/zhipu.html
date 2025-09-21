@@ -1,0 +1,623 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Plain Text Editor</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background-color: #f5f5f5;
+            color: #333;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+
+        header {
+            background-color: #4a6fa5;
+            color: white;
+            padding: 1rem;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+        }
+
+        header h1 {
+            font-size: 1.5rem;
+            font-weight: 500;
+        }
+
+        .toolbar {
+            background-color: #fff;
+            padding: 0.75rem;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.5rem;
+            border-bottom: 1px solid #ddd;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+        }
+
+        .toolbar-group {
+            display: flex;
+            gap: 0.5rem;
+            align-items: center;
+            margin-right: 1rem;
+        }
+
+        button {
+            background-color: #4a6fa5;
+            color: white;
+            border: none;
+            padding: 0.5rem 1rem;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 0.9rem;
+            transition: background-color 0.2s;
+        }
+
+        button:hover {
+            background-color: #3a5a8a;
+        }
+
+        button:active {
+            background-color: #2a4a7a;
+        }
+
+        .search-container {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.5rem;
+            align-items: center;
+            flex-grow: 1;
+        }
+
+        input[type="text"] {
+            padding: 0.5rem;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 0.9rem;
+            flex-grow: 1;
+            min-width: 150px;
+        }
+
+        .search-options {
+            display: flex;
+            gap: 0.5rem;
+            align-items: center;
+        }
+
+        .checkbox-container {
+            display: flex;
+            align-items: center;
+            gap: 0.25rem;
+        }
+
+        .checkbox-container input[type="checkbox"] {
+            cursor: pointer;
+        }
+
+        .checkbox-container label {
+            font-size: 0.9rem;
+            cursor: pointer;
+        }
+
+        main {
+            flex-grow: 1;
+            display: flex;
+            flex-direction: column;
+            padding: 1rem;
+            overflow: hidden;
+        }
+
+        .editor-container {
+            flex-grow: 1;
+            display: flex;
+            flex-direction: column;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            overflow: hidden;
+            background-color: white;
+        }
+
+        .editor-header {
+            background-color: #f0f0f0;
+            padding: 0.5rem;
+            border-bottom: 1px solid #ddd;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .editor-info {
+            font-size: 0.85rem;
+            color: #666;
+        }
+
+        textarea {
+            flex-grow: 1;
+            padding: 1rem;
+            font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+            font-size: 1rem;
+            line-height: 1.5;
+            resize: none;
+            border: none;
+            outline: none;
+            background-color: white;
+        }
+
+        .status-bar {
+            background-color: #f0f0f0;
+            padding: 0.5rem;
+            border-top: 1px solid #ddd;
+            font-size: 0.85rem;
+            color: #666;
+            display: flex;
+            justify-content: space-between;
+        }
+
+        .notification {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            background-color: #4a6fa5;
+            color: white;
+            padding: 1rem;
+            border-radius: 4px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.2);
+            opacity: 0;
+            transform: translateY(20px);
+            transition: opacity 0.3s, transform 0.3s;
+            z-index: 1000;
+        }
+
+        .notification.show {
+            opacity: 1;
+            transform: translateY(0);
+        }
+
+        @media (max-width: 768px) {
+            .toolbar {
+                flex-direction: column;
+                align-items: stretch;
+            }
+            
+            .toolbar-group {
+                margin-right: 0;
+                margin-bottom: 0.5rem;
+            }
+            
+            .search-container {
+                flex-direction: column;
+            }
+            
+            input[type="text"] {
+                min-width: 100%;
+            }
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <h1>Plain Text Editor</h1>
+    </header>
+    
+    <div class="toolbar">
+        <div class="toolbar-group">
+            <button id="newBtn">New</button>
+            <button id="openBtn">Open</button>
+            <button id="saveBtn">Save</button>
+        </div>
+        
+        <div class="search-container">
+            <input type="text" id="searchInput" placeholder="Search for...">
+            <input type="text" id="replaceInput" placeholder="Replace with...">
+            <button id="searchBtn">Search</button>
+            <button id="replaceBtn">Replace</button>
+            <button id="replaceAllBtn">Replace All</button>
+            
+            <div class="search-options">
+                <div class="checkbox-container">
+                    <input type="checkbox" id="caseSensitive">
+                    <label for="caseSensitive">Case Sensitive</label>
+                </div>
+                <div class="checkbox-container">
+                    <input type="checkbox" id="regex">
+                    <label for="regex">Regular Expression</label>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <main>
+        <div class="editor-container">
+            <div class="editor-header">
+                <div class="editor-info">Untitled.txt</div>
+                <div class="editor-info">Line: <span id="lineNum">1</span>, Column: <span id="colNum">1</span></div>
+            </div>
+            <textarea id="textEditor" spellcheck="false"></textarea>
+            <div class="status-bar">
+                <div id="statusText">Ready</div>
+                <div id="charCount">0 characters</div>
+            </div>
+        </div>
+    </main>
+    
+    <div id="notification" class="notification"></div>
+    
+    <input type="file" id="fileInput" style="display: none;" accept=".txt">
+    
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            const textEditor = document.getElementById('textEditor');
+            const newBtn = document.getElementById('newBtn');
+            const openBtn = document.getElementById('openBtn');
+            const saveBtn = document.getElementById('saveBtn');
+            const searchInput = document.getElementById('searchInput');
+            const replaceInput = document.getElementById('replaceInput');
+            const searchBtn = document.getElementById('searchBtn');
+            const replaceBtn = document.getElementById('replaceBtn');
+            const replaceAllBtn = document.getElementById('replaceAllBtn');
+            const caseSensitive = document.getElementById('caseSensitive');
+            const regex = document.getElementById('regex');
+            const fileInput = document.getElementById('fileInput');
+            const notification = document.getElementById('notification');
+            const statusText = document.getElementById('statusText');
+            const charCount = document.getElementById('charCount');
+            const lineNum = document.getElementById('lineNum');
+            const colNum = document.getElementById('colNum');
+            
+            let currentFileName = 'Untitled.txt';
+            let lastFoundPosition = null;
+            
+            // Update cursor position
+            textEditor.addEventListener('input', updateCursorPosition);
+            textEditor.addEventListener('click', updateCursorPosition);
+            textEditor.addEventListener('keyup', updateCursorPosition);
+            
+            function updateCursorPosition() {
+                const text = textEditor.value;
+                const cursorPosition = textEditor.selectionStart;
+                
+                let line = 1;
+                let column = 1;
+                
+                for (let i = 0; i < cursorPosition; i++) {
+                    if (text[i] === '\n') {
+                        line++;
+                        column = 1;
+                    } else {
+                        column++;
+                    }
+                }
+                
+                lineNum.textContent = line;
+                colNum.textContent = column;
+                charCount.textContent = `${text.length} characters`;
+            }
+            
+            // Show notification
+            function showNotification(message, duration = 3000) {
+                notification.textContent = message;
+                notification.classList.add('show');
+                
+                setTimeout(() => {
+                    notification.classList.remove('show');
+                }, duration);
+            }
+            
+            // New file
+            newBtn.addEventListener('click', () => {
+                if (textEditor.value && !confirm('Are you sure you want to create a new file? Unsaved changes will be lost.')) {
+                    return;
+                }
+                
+                textEditor.value = '';
+                currentFileName = 'Untitled.txt';
+                document.querySelector('.editor-info').textContent = currentFileName;
+                statusText.textContent = 'New file created';
+                updateCursorPosition();
+                showNotification('New file created');
+            });
+            
+            // Open file
+            openBtn.addEventListener('click', () => {
+                fileInput.click();
+            });
+            
+            fileInput.addEventListener('change', (e) => {
+                const file = e.target.files[0];
+                if (!file) return;
+                
+                const reader = new FileReader();
+                reader.onload = (event) => {
+                    textEditor.value = event.target.result;
+                    currentFileName = file.name;
+                    document.querySelector('.editor-info').textContent = currentFileName;
+                    statusText.textContent = `Opened ${currentFileName}`;
+                    updateCursorPosition();
+                    showNotification(`File ${currentFileName} opened`);
+                };
+                reader.readAsText(file);
+            });
+            
+            // Save file
+            saveBtn.addEventListener('click', () => {
+                const blob = new Blob([textEditor.value], { type: 'text/plain' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = currentFileName;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+                statusText.textContent = `Saved ${currentFileName}`;
+                showNotification(`File ${currentFileName} saved`);
+            });
+            
+            // Search function
+            function searchText() {
+                const searchTerm = searchInput.value;
+                if (!searchTerm) {
+                    statusText.textContent = 'Please enter a search term';
+                    return;
+                }
+                
+                const isCaseSensitive = caseSensitive.checked;
+                const isRegex = regex.checked;
+                const replaceTerm = replaceInput.value;
+                
+                const lines = textEditor.value.split('\n');
+                let found = false;
+                let foundLine = -1;
+                let foundColumn = -1;
+                let foundLength = 0;
+                
+                for (let i = 0; i < lines.length; i++) {
+                    const line = lines[i];
+                    let match;
+                    
+                    try {
+                        if (isRegex) {
+                            const flags = isCaseSensitive ? 'g' : 'gi';
+                            const regex = new RegExp(searchTerm, flags);
+                            match = regex.exec(line);
+                        } else {
+                            const searchStr = isCaseSensitive ? line : line.toLowerCase();
+                            const searchVal = isCaseSensitive ? searchTerm : searchTerm.toLowerCase();
+                            const index = searchStr.indexOf(searchVal);
+                            if (index !== -1) {
+                                match = {
+                                    index: index,
+                                    0: searchTerm,
+                                    length: searchTerm.length
+                                };
+                            }
+                        }
+                    } catch (e) {
+                        statusText.textContent = `Invalid regular expression: ${e.message}`;
+                        return;
+                    }
+                    
+                    if (match) {
+                        found = true;
+                        foundLine = i + 1;
+                        foundColumn = match.index + 1;
+                        foundLength = match[0].length;
+                        break;
+                    }
+                }
+                
+                if (found) {
+                    // Calculate absolute position for selection
+                    let absolutePosition = 0;
+                    for (let i = 0; i < foundLine - 1; i++) {
+                        absolutePosition += lines[i].length + 1; // +1 for newline
+                    }
+                    absolutePosition += foundColumn - 1;
+                    
+                    textEditor.focus();
+                    textEditor.setSelectionRange(absolutePosition, absolutePosition + foundLength);
+                    
+                    lastFoundPosition = {
+                        line: foundLine,
+                        column: foundColumn,
+                        length: foundLength,
+                        absolutePosition: absolutePosition
+                    };
+                    
+                    statusText.textContent = `Found at line ${foundLine}, column ${foundColumn}`;
+                } else {
+                    statusText.textContent = 'Text not found';
+                    lastFoundPosition = null;
+                }
+            }
+            
+            // Replace function
+            function replaceText() {
+                if (!lastFoundPosition) {
+                    // If no previous search result, perform a search first
+                    searchText();
+                    if (!lastFoundPosition) {
+                        return; // No match found
+                    }
+                }
+                
+                const replaceTerm = replaceInput.value;
+                const originalText = textEditor.value;
+                const lines = originalText.split('\n');
+                
+                // Get the line where the match was found
+                const lineIndex = lastFoundPosition.line - 1;
+                if (lineIndex < 0 || lineIndex >= lines.length) {
+                    statusText.textContent = 'Invalid position for replacement';
+                    return;
+                }
+                
+                const line = lines[lineIndex];
+                const matchStart = lastFoundPosition.column - 1;
+                const matchEnd = matchStart + lastFoundPosition.length;
+                
+                // Replace the matched text
+                const newLine = line.substring(0, matchStart) + replaceTerm + line.substring(matchEnd);
+                lines[lineIndex] = newLine;
+                
+                // Update the editor content
+                textEditor.value = lines.join('\n');
+                
+                // Calculate new absolute position after replacement
+                let newAbsolutePosition = 0;
+                for (let i = 0; i < lineIndex; i++) {
+                    newAbsolutePosition += lines[i].length + 1; // +1 for newline
+                }
+                newAbsolutePosition += matchStart + replaceTerm.length;
+                
+                // Set cursor position after the replaced text
+                textEditor.focus();
+                textEditor.setSelectionRange(newAbsolutePosition, newAbsolutePosition);
+                
+                // Reset last found position
+                lastFoundPosition = null;
+                
+                statusText.textContent = 'Text replaced';
+                showNotification('Text replaced');
+                
+                // Automatically find next occurrence
+                searchText();
+            }
+            
+            // Replace all function
+            function replaceAllText() {
+                const searchTerm = searchInput.value;
+                if (!searchTerm) {
+                    statusText.textContent = 'Please enter a search term';
+                    return;
+                }
+                
+                const isCaseSensitive = caseSensitive.checked;
+                const isRegex = regex.checked;
+                const replaceTerm = replaceInput.value;
+                
+                const lines = textEditor.value.split('\n');
+                let replaceCount = 0;
+                
+                for (let i = 0; i < lines.length; i++) {
+                    const line = lines[i];
+                    let newLine = line;
+                    
+                    try {
+                        if (isRegex) {
+                            const flags = isCaseSensitive ? 'g' : 'gi';
+                            const regex = new RegExp(searchTerm, flags);
+                            const matches = line.match(regex);
+                            if (matches) {
+                                replaceCount += matches.length;
+                                newLine = line.replace(regex, replaceTerm);
+                            }
+                        } else {
+                            const searchStr = isCaseSensitive ? line : line.toLowerCase();
+                            const searchVal = isCaseSensitive ? searchTerm : searchTerm.toLowerCase();
+                            
+                            if (searchStr.includes(searchVal)) {
+                                const regex = new RegExp(searchTerm.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), isCaseSensitive ? 'g' : 'gi');
+                                const matches = line.match(regex);
+                                if (matches) {
+                                    replaceCount += matches.length;
+                                    newLine = line.replace(regex, replaceTerm);
+                                }
+                            }
+                        }
+                    } catch (e) {
+                        statusText.textContent = `Invalid regular expression: ${e.message}`;
+                        return;
+                    }
+                    
+                    lines[i] = newLine;
+                }
+                
+                textEditor.value = lines.join('\n');
+                statusText.textContent = `Replaced ${replaceCount} occurrence(s)`;
+                showNotification(`Replaced ${replaceCount} occurrence(s)`);
+                updateCursorPosition();
+                
+                // Reset last found position
+                lastFoundPosition = null;
+            }
+            
+            // Event listeners
+            searchBtn.addEventListener('click', searchText);
+            replaceBtn.addEventListener('click', replaceText);
+            replaceAllBtn.addEventListener('click', replaceAllText);
+            
+            // Reset last found position when search parameters change
+            searchInput.addEventListener('input', () => {
+                lastFoundPosition = null;
+            });
+            
+            replaceInput.addEventListener('input', () => {
+                lastFoundPosition = null;
+            });
+            
+            caseSensitive.addEventListener('change', () => {
+                lastFoundPosition = null;
+            });
+            
+            regex.addEventListener('change', () => {
+                lastFoundPosition = null;
+            });
+            
+            // Reset last found position when text is edited
+            textEditor.addEventListener('input', () => {
+                lastFoundPosition = null;
+            });
+            
+            // Keyboard shortcuts
+            document.addEventListener('keydown', (e) => {
+                // Ctrl+F for search
+                if (e.ctrlKey && e.key === 'f') {
+                    e.preventDefault();
+                    searchInput.focus();
+                }
+                
+                // Ctrl+H for replace
+                if (e.ctrlKey && e.key === 'h') {
+                    e.preventDefault();
+                    replaceInput.focus();
+                }
+                
+                // Ctrl+S for save
+                if (e.ctrlKey && e.key === 's') {
+                    e.preventDefault();
+                    saveBtn.click();
+                }
+                
+                // Ctrl+O for open
+                if (e.ctrlKey && e.key === 'o') {
+                    e.preventDefault();
+                    openBtn.click();
+                }
+                
+                // Ctrl+N for new
+                if (e.ctrlKey && e.key === 'n') {
+                    e.preventDefault();
+                    newBtn.click();
+                }
+                
+                // F3 for search next
+                if (e.key === 'F3') {
+                    e.preventDefault();
+                    searchText();
+                }
+            });
+            
+            // Initialize
+            updateCursorPosition();
+        });
+    </script>
+</body>
+</html>

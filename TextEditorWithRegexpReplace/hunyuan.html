@@ -1,0 +1,319 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Plain Text Editor</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      margin: 20px;
+      background-color: #f9f9f9;
+    }
+    .container {
+      max-width: 900px;
+      margin: auto;
+    }
+    h1 {
+      color: #333;
+    }
+    .toolbar {
+      margin-bottom: 10px;
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+    button, input[type="file"], input[type="text"], textarea, select {
+      font-size: 14px;
+      padding: 5px 10px;
+    }
+    button {
+      cursor: pointer;
+    }
+    textarea {
+      width: 100%;
+      height: 400px;
+      font-family: 'Courier New', monospace;
+      font-size: 14px;
+      padding: 10px;
+      border: 1px solid #ccc;
+      box-sizing: border-box;
+      resize: vertical;
+    }
+    .search-panel {
+      margin-top: 10px;
+      padding: 10px;
+      background: #fff;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+    }
+    .search-row {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+      margin-bottom: 8px;
+      flex-wrap: wrap;
+    }
+    .search-row label {
+      white-space: nowrap;
+    }
+    .search-row input, .search-row select {
+      flex: 1;
+      min-width: 120px;
+    }
+    .buttons-search {
+      display: flex;
+      gap: 5px;
+    }
+    .buttons-search button {
+      flex-shrink: 0;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>🔤 Plain Text Editor</h1>
+
+    <!-- File Toolbar -->
+    <div class="toolbar">
+      <button onclick="newFile()">📄 New</button>
+      <label for="fileInput">📂 Open:</label>
+      <input type="file" id="fileInput" accept=".txt" style="display: none;" onchange="openFile(event)">
+      <button onclick="document.getElementById('fileInput').click()">Open File</button>
+      <button onclick="saveFile()">💾 Save</button>
+    </div>
+
+    <!-- Text Editor -->
+    <textarea id="editor" placeholder="Start typing or open a file..."></textarea>
+
+    <!-- Search & Replace Panel -->
+    <div class="search-panel">
+      <h3>🔍 Search & Replace</h3>
+      <div class="search-row">
+        <label>Find:</label>
+        <input type="text" id="findText" placeholder="Text or RegExp" />
+        <label>Replace:</label>
+        <input type="text" id="replaceText" placeholder="Replacement" />
+        <div class="buttons-search">
+          <button onclick="findNext()">Find Next</button>
+          <button onclick="replaceNext()">Replace</button>
+          <button onclick="replaceAll()">Replace All</button>
+        </div>
+      </div>
+      <div class="search-row">
+        <label>Search Mode:</label>
+        <select id="searchMode">
+          <option value="caseSensitive">Case Sensitive</option>
+          <option value="caseInsensitive">Case Insensitive</option>
+          <option value="regexp">RegExp</option>
+        </select>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const editor = document.getElementById('editor');
+
+    // === Cursor Position Saving & Restoring ===
+    editor.addEventListener('focus', saveCursorPosition);
+
+    function saveCursorPosition() {
+      const cursorPos = editor.selectionStart;
+      localStorage.setItem('editorCursorPos', cursorPos.toString());
+    }
+
+    function restoreCursorPosition() {
+      const saved = localStorage.getItem('editorCursorPos');
+      if (saved !== null) {
+        const pos = parseInt(saved, 10);
+        if (!isNaN(pos) && pos >= 0 && pos <= editor.value.length) {
+          editor.setSelectionRange(pos, pos);
+          editor.focus();
+        }
+      }
+    }
+
+    editor.addEventListener('focus', restoreCursorPosition);
+    window.addEventListener('load', restoreCursorPosition);
+
+    // === File Operations ===
+    function newFile() {
+      if (confirm('Are you sure you want to create a new file? Unsaved changes will be lost.')) {
+        editor.value = '';
+        editor.focus();
+      }
+    }
+
+    function openFile(event) {
+      const file = event.target.files[0];
+      if (file && (file.type === 'text/plain' || file.name.endsWith('.txt'))) {
+        const reader = new FileReader();
+        reader.onload = function(e) {
+          editor.value = e.target.result;
+          editor.focus();
+        };
+        reader.readAsText(file);
+      } else {
+        alert('Please select a valid .txt text file.');
+      }
+      event.target.value = '';
+    }
+
+    function saveFile() {
+      const content = editor.value;
+      const blob = new Blob([content], { type: 'text/plain' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'document.txt';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      editor.focus();
+    }
+
+    // === Search & Replace Logic ===
+    function getSearchParams() {
+      const findText = document.getElementById('findText').value;
+      const mode = document.getElementById('searchMode').value;
+      let flags = 'g';
+
+      if (mode === 'caseInsensitive') {
+        flags += 'i';
+      } else if (mode === 'regexp') {
+        flags = ''; // User-provided RegExp may have its own flags
+      }
+
+      return { findText, mode, flags };
+    }
+
+    function getCurrentEditorState() {
+      return {
+        text: editor.value,
+        selectionStart: editor.selectionStart,
+        selectionEnd: editor.selectionEnd
+      };
+    }
+
+    function escapeRegExp(string) {
+      return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    }
+
+    function findFromCursor(findText, mode, flags, startPos = null) {
+      const state = getCurrentEditorState();
+      let text = state.text;
+      let pos = startPos !== null ? startPos : state.selectionStart;
+
+      if (mode === 'regexp') {
+        let regex;
+        try {
+          regex = new RegExp(findText, flags);
+        } catch (e) {
+          alert('Invalid RegExp: ' + e.message);
+          return null;
+        }
+        regex.lastIndex = pos;
+        const result = regex.exec(text);
+        if (result) {
+          return { start: result.index, end: result.index + result[0].length, match: result[0] };
+        }
+
+        // Try from start if not found
+        regex.lastIndex = 0;
+        const globalResult = regex.exec(text);
+        if (globalResult) {
+          return { start: globalResult.index, end: globalResult.index + globalResult[0].length, match: globalResult[0] };
+        }
+      } else {
+        const target = mode === 'caseInsensitive' ? findText.toLowerCase() : findText;
+        const searchText = mode === 'caseInsensitive' ? text.toLowerCase() : text;
+        const searchRegex = new RegExp(escapeRegExp(findText), mode === 'caseInsensitive' ? 'gi' : 'g');
+        searchRegex.lastIndex = pos;
+        const result = searchRegex.exec(text);
+        if (result) {
+          return { start: result.index, end: result.index + result[0].length, match: result[0] };
+        }
+
+        // Try from start
+        searchRegex.lastIndex = 0;
+        const globalResult = searchRegex.exec(text);
+        if (globalResult) {
+          return { start: globalResult.index, end: globalResult.index + globalResult[0].length, match: globalResult[0] };
+        }
+      }
+
+      return null;
+    }
+
+    function findNext() {
+      const params = getSearchParams();
+      if (!params) return;
+
+      const startPos = editor.selectionStart;
+      const result = findFromCursor(params.findText, params.mode, params.flags, startPos);
+
+      if (result) {
+        editor.setSelectionRange(result.start, result.end);
+        editor.focus();
+      } else {
+        alert('Text not found.');
+      }
+    }
+
+    function replaceNext() {
+      const params = getSearchParams();
+      if (!params) return;
+
+      const findText = params.findText;
+      const mode = params.mode;
+      const flags = params.flags;
+      const replaceText = document.getElementById('replaceText').value;
+
+      const state = getCurrentEditorState();
+      const result = findFromCursor(findText, mode, flags, state.selectionStart);
+
+      if (result) {
+        const before = editor.value.substring(0, result.start);
+        const after = editor.value.substring(result.end);
+        editor.value = before + replaceText + after;
+
+        const newCursorPos = result.start + replaceText.length;
+        editor.setSelectionRange(newCursorPos, newCursorPos);
+        editor.focus();
+      } else {
+        alert('No match found to replace.');
+      }
+    }
+
+    function replaceAll() {
+      const params = getSearchParams();
+      if (!params) return;
+
+      const findText = params.findText;
+      const mode = params.mode;
+      const flags = params.flags;
+      const replaceText = document.getElementById('replaceText').value;
+
+      let fullText = editor.value;
+
+      let processedText;
+      if (mode === 'regexp') {
+        try {
+          const regex = new RegExp(findText, flags);
+          processedText = fullText.replace(regex, replaceText);
+        } catch (e) {
+          alert('Invalid Regular Expression: ' + e.message);
+          return;
+        }
+      } else {
+        const searchRegex = new RegExp(escapeRegExp(findText), mode === 'caseInsensitive' ? 'gi' : 'g');
+        processedText = fullText.replace(searchRegex, replaceText);
+      }
+
+      editor.value = processedText;
+      editor.focus();
+    }
+  </script>
+</body>
+</html>

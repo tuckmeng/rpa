@@ -1,0 +1,1191 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Plain Text Editor</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        .toolbar {
+            background-color: #333;
+            padding: 10px;
+            border-radius: 5px 5px 0 0;
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+        .toolbar button {
+            background-color: #555;
+            color: white;
+            border: none;
+            padding: 8px 15px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+        }
+        .toolbar button:hover {
+            background-color: #777;
+        }
+        .search-container {
+            background-color: #444;
+            padding: 15px;
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+            align-items: center;
+            border: 2px solid #555;
+            border-radius: 5px;
+            margin: 10px 0;
+        }
+        .search-container input, .search-container select {
+            padding: 8px;
+            border-radius: 4px;
+            border: 1px solid #666;
+            min-width: 200px;
+        }
+        .search-container button {
+            background-color: #555;
+            color: white;
+            border: none;
+            padding: 8px 15px;
+            border-radius: 4px;
+            cursor: pointer;
+            white-space: nowrap;
+        }
+        .search-container button:hover {
+            background-color: #777;
+        }
+        .search-options {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+            flex-wrap: wrap;
+            margin-top: 10px;
+            padding-top: 10px;
+            border-top: 1px solid #555;
+            width: 100%;
+        }
+        .search-options label {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+            color: white;
+            cursor: pointer;
+        }
+        .search-options input[type="checkbox"] {
+            margin: 0;
+        }
+        #editor {
+            width: 100%;
+            height: 600px;
+            font-family: 'Courier New', Courier, monospace;
+            font-size: 14px;
+            padding: 15px;
+            box-sizing: border-box;
+            border: 1px solid #ccc;
+            resize: vertical;
+            background-color: white;
+            white-space: pre;
+            overflow: auto;
+        }
+        .status-bar {
+            background-color: #333;
+            color: white;
+            padding: 5px 10px;
+            font-size: 12px;
+            border-radius: 0 0 5px 5px;
+            display: flex;
+            justify-content: space-between;
+        }
+        .hidden {
+            display: none;
+        }
+        .notification {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background-color: #4CAF50;
+            color: white;
+            padding: 16px;
+            border-radius: 5px;
+            z-index: 1000;
+            box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+            display: none;
+        }
+        .search-help {
+            color: #aaa;
+            font-size: 12px;
+            margin-left: 10px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="toolbar">
+            <button id="newBtn">New</button>
+            <button id="openBtn">Open</button>
+            <button id="saveBtn">Save</button>
+            <button id="toggleSearchBtn">Search & Replace</button>
+        </div>
+        
+        <div class="search-container hidden" id="searchContainer">
+            <div style="display: flex; flex-direction: column; gap: 10px; width: 100%;">
+                <div style="display: flex; gap: 10px; flex-wrap: wrap; align-items: center; width: 100%;">
+                    <input type="text" id="searchInput" placeholder="Search text or RegExp">
+                    <button id="findBtn">Find Next</button>
+                    <button id="findPrevBtn">Find Previous</button>
+                    <span id="matchInfo">Matches: 0</span>
+                    <span class="search-help" id="searchHelp">Case sensitive text search</span>
+                </div>
+                
+                <div style="display: flex; gap: 10px; flex-wrap: wrap; align-items: center; width: 100%;">
+                    <input type="text" id="replaceInput" placeholder="Replace with">
+                    <button id="replaceBtn">Replace</button>
+                    <button id="replaceAllBtn">Replace All</button>
+                </div>
+                
+                <div class="search-options">
+                    <label>
+                        <input type="checkbox" id="caseSensitive" checked> Case sensitive
+                    </label>
+                    <label>
+                        <input type="checkbox" id="useRegExp"> Use Regular Expression
+                    </label>
+                    <label>
+                        <input type="checkbox" id="matchWholeWord"> Match whole word
+                    </label>
+                    <label>
+                        <input type="checkbox" id="wrapAround" checked> Wrap around
+                    </label>
+                </div>
+            </div>
+        </div>
+        
+        <textarea id="editor" placeholder="Start typing your text here..."></textarea>
+        
+        <div class="status-bar">
+            <span id="cursorPosition">Line: 1, Col: 1</span>
+            <span id="fileInfo">No file loaded</span>
+        </div>
+    </div>
+    
+    <div class="notification" id="saveNotification">
+        Click "Save" and your browser will let you choose where to save the file.
+    </div>
+
+    <script>
+        // DOM Elements
+        const editor = document.getElementById('editor');
+        const newBtn = document.getElementById('newBtn');
+        const openBtn = document.getElementById('openBtn');
+        const saveBtn = document.getElementById('saveBtn');
+        const toggleSearchBtn = document.getElementById('toggleSearchBtn');
+        const searchContainer = document.getElementById('searchContainer');
+        const searchInput = document.getElementById('searchInput');
+        const replaceInput = document.getElementById('replaceInput');
+        const findBtn = document.getElementById('findBtn');
+        const findPrevBtn = document.getElementById('findPrevBtn');
+        const replaceBtn = document.getElementById('replaceBtn');
+        const replaceAllBtn = document.getElementById('replaceAllBtn');
+        const matchInfo = document.getElementById('matchInfo');
+        const cursorPosition = document.getElementById('cursorPosition');
+        const fileInfo = document.getElementById('fileInfo');
+        const saveNotification = document.getElementById('saveNotification');
+        const caseSensitive = document.getElementById('caseSensitive');
+        const useRegExp = document.getElementById('useRegExp');
+        const matchWholeWord = document.getElementById('matchWholeWord');
+        const wrapAround = document.getElementById('wrapAround');
+        const searchHelp = document.getElementById('searchHelp');
+
+        // Current file state
+        let currentFileName = null;
+        let lastSearchRegex = null;
+        let searchMatches = [];
+        let currentMatchIndex = -1;
+        
+        // Store cursor position - this will be used for all search operations
+        let savedCursorPosition = {
+            start: 0,
+            end: 0,
+            timestamp: Date.now()
+        };
+        
+        // Undo/Redo functionality
+        const undoStack = [];
+        const redoStack = [];
+        let ignoreInputEvent = false; // Flag to ignore input events during undo/redo
+        
+        // Maximum number of undo steps to keep in memory
+        const MAX_UNDO_STEPS = 100;
+
+        // Update cursor position - called whenever cursor moves
+        function updateSavedCursorPosition() {
+            try {
+                // Only update if editor is available and has valid selection
+                if (editor && typeof editor.selectionStart === 'number') {
+                    savedCursorPosition.start = editor.selectionStart;
+                    savedCursorPosition.end = editor.selectionEnd;
+                    savedCursorPosition.timestamp = Date.now();
+                }
+            } catch (e) {
+                console.warn('Could not update cursor position:', e);
+            }
+        }
+        
+        // Restore cursor position in editor
+        function restoreCursorPosition() {
+            try {
+                editor.setSelectionRange(savedCursorPosition.start, savedCursorPosition.end);
+                editor.focus();
+            } catch (e) {
+                console.warn('Could not restore cursor position:', e);
+                // Fallback: set to start of document
+                editor.setSelectionRange(0, 0);
+                editor.focus();
+            }
+        }
+        
+        // Get cursor position for search operations (always use saved position)
+        function getSearchStartPosition() {
+            return savedCursorPosition.start;
+        }
+        
+        // Get cursor position for replace operations (always use saved position)
+        function getReplaceCursorPosition() {
+            return {
+                start: savedCursorPosition.start,
+                end: savedCursorPosition.end
+            };
+        }
+        
+        // Save current state for undo
+        function saveUndoState(content, cursorStart, cursorEnd, isReplaceAll = false) {
+            // Don't save if content hasn't changed from the last saved state
+            if (undoStack.length > 0 && undoStack[undoStack.length - 1].content === content) {
+                return;
+            }
+            
+            // Create undo state object
+            const state = {
+                content: content,
+                cursorStart: cursorStart,
+                cursorEnd: cursorEnd,
+                timestamp: Date.now(),
+                isReplaceAll: isReplaceAll
+            };
+            
+            // Add to undo stack
+            undoStack.push(state);
+            
+            // Limit stack size
+            if (undoStack.length > MAX_UNDO_STEPS) {
+                undoStack.shift();
+            }
+            
+            // Clear redo stack when new changes are made
+            redoStack.length = 0;
+        }
+        
+        // Undo last change
+        function undo() {
+            if (undoStack.length === 0) {
+                return;
+            }
+            
+            // Save current state to redo stack
+            redoStack.push({
+                content: editor.value,
+                cursorStart: editor.selectionStart,
+                cursorEnd: editor.selectionEnd,
+                timestamp: Date.now()
+            });
+            
+            // Get previous state
+            const prevState = undoStack.pop();
+            
+            // Apply previous state
+            ignoreInputEvent = true; // Prevent input event from triggering another undo save
+            editor.value = prevState.content;
+            editor.setSelectionRange(prevState.cursorStart, prevState.cursorEnd);
+            ignoreInputEvent = false;
+            
+            // Update saved cursor position
+            savedCursorPosition.start = prevState.cursorStart;
+            savedCursorPosition.end = prevState.cursorEnd;
+            savedCursorPosition.timestamp = Date.now();
+            
+            // Clear search matches since content changed
+            clearSearch();
+            
+            // Update UI
+            updateStatusBar();
+            
+            console.log('Undo performed. Undo stack size:', undoStack.length, 'Redo stack size:', redoStack.length);
+        }
+        
+        // Redo last undone change
+        function redo() {
+            if (redoStack.length === 0) {
+                return;
+            }
+            
+            // Save current state to undo stack
+            undoStack.push({
+                content: editor.value,
+                cursorStart: editor.selectionStart,
+                cursorEnd: editor.selectionEnd,
+                timestamp: Date.now()
+            });
+            
+            // Get next state
+            const nextState = redoStack.pop();
+            
+            // Apply next state
+            ignoreInputEvent = true; // Prevent input event from triggering another undo save
+            editor.value = nextState.content;
+            editor.setSelectionRange(nextState.cursorStart, nextState.cursorEnd);
+            ignoreInputEvent = false;
+            
+            // Update saved cursor position
+            savedCursorPosition.start = nextState.cursorStart;
+            savedCursorPosition.end = nextState.cursorEnd;
+            savedCursorPosition.timestamp = Date.now();
+            
+            // Clear search matches since content changed
+            clearSearch();
+            
+            // Update UI
+            updateStatusBar();
+            
+            console.log('Redo performed. Undo stack size:', undoStack.length, 'Redo stack size:', redoStack.length);
+        }
+
+        // Event Listeners for cursor position tracking
+        editor.addEventListener('input', function() {
+            if (!ignoreInputEvent) {
+                updateSavedCursorPosition();
+                updateStatusBar();
+                
+                // Save state for undo after a small delay to group rapid changes
+                setTimeout(() => {
+                    if (!ignoreInputEvent) {
+                        saveUndoState(editor.value, savedCursorPosition.start, savedCursorPosition.end);
+                    }
+                }, 100);
+            }
+        });
+        
+        editor.addEventListener('keydown', function(e) {
+            updateSavedCursorPosition();
+            
+            // Ctrl+Z for undo
+            if (e.ctrlKey && e.key === 'z' && !e.shiftKey) {
+                e.preventDefault();
+                undo();
+                return;
+            }
+            
+            // Ctrl+Shift+Z or Ctrl+Y for redo
+            if ((e.ctrlKey && e.key === 'z' && e.shiftKey) || (e.ctrlKey && e.key === 'y')) {
+                e.preventDefault();
+                redo();
+                return;
+            }
+            
+            handleEditorKeyDown(e);
+        });
+        
+        editor.addEventListener('click', function() {
+            updateSavedCursorPosition();
+            updateStatusBar();
+        });
+        
+        editor.addEventListener('keyup', function() {
+            updateSavedCursorPosition();
+            updateStatusBar();
+        });
+        
+        editor.addEventListener('mouseup', function() {
+            updateSavedCursorPosition();
+            updateStatusBar();
+        });
+        
+        editor.addEventListener('focus', function() {
+            updateSavedCursorPosition();
+            updateStatusBar();
+        });
+        
+        // Search button event listeners - always use saved cursor position
+        findBtn.addEventListener('click', findNext);
+        findPrevBtn.addEventListener('click', findPrevious);
+        replaceBtn.addEventListener('click', replaceText);
+        replaceAllBtn.addEventListener('click', replaceAllText);
+        
+        // File operation event listeners
+        newBtn.addEventListener('click', createNewFile);
+        openBtn.addEventListener('click', openFile);
+        saveBtn.addEventListener('click', saveFile);
+        toggleSearchBtn.addEventListener('click', toggleSearch);
+        
+        // Search options event listeners
+        caseSensitive.addEventListener('change', updateSearchHelp);
+        useRegExp.addEventListener('change', updateSearchHelp);
+        matchWholeWord.addEventListener('change', updateSearchHelp);
+        
+        searchInput.addEventListener('input', function() {
+            if (searchInput.value) {
+                findFromCursor();
+            } else {
+                clearSearch();
+            }
+        });
+
+        // Functions
+        function createNewFile() {
+            if (editor.value && !confirm('Are you sure you want to create a new file? All unsaved changes will be lost.')) {
+                return;
+            }
+            editor.value = '';
+            currentFileName = null;
+            fileInfo.textContent = 'No file loaded';
+            savedCursorPosition.start = 0;
+            savedCursorPosition.end = 0;
+            
+            // Save this as an undo state
+            saveUndoState(editor.value, 0, 0);
+            
+            updateStatusBar();
+            editor.focus();
+        }
+
+        function openFile() {
+            if (editor.value && !confirm('Are you sure you want to open a file? All unsaved changes will be lost.')) {
+                return;
+            }
+            
+            const input = document.createElement('input');
+            input.type = 'file';
+            input.accept = '.txt,.md,.json,.js,.css,.html,.xml,.csv,.*';
+            
+            input.onchange = e => {
+                const file = e.target.files[0];
+                if (!file) return;
+                
+                const reader = new FileReader();
+                reader.onload = function(event) {
+                    const content = event.target.result;
+                    editor.value = content;
+                    currentFileName = file.name;
+                    fileInfo.textContent = file.name;
+                    savedCursorPosition.start = 0;
+                    savedCursorPosition.end = 0;
+                    
+                    // Save this as an undo state
+                    saveUndoState(content, 0, 0);
+                    
+                    updateStatusBar();
+                    editor.focus();
+                };
+                reader.onerror = function() {
+                    alert('Error reading file');
+                };
+                reader.readAsText(file);
+            };
+            
+            input.click();
+        }
+
+        function saveFile() {
+            if (!editor.value) {
+                alert('Nothing to save');
+                return;
+            }
+            
+            let fileName = currentFileName;
+            if (!fileName) {
+                fileName = prompt('Enter file name:', 'document.txt');
+                if (!fileName) return;
+                currentFileName = fileName;
+                fileInfo.textContent = fileName;
+            }
+            
+            try {
+                // Create blob with the content
+                const blob = new Blob([editor.value], { type: 'text/plain' });
+                
+                // Create a temporary anchor element
+                const a = document.createElement('a');
+                a.href = URL.createObjectURL(blob);
+                a.download = fileName;
+                
+                // Append to body (required for Firefox)
+                document.body.appendChild(a);
+                
+                // Trigger click
+                a.click();
+                
+                // Clean up
+                setTimeout(() => {
+                    document.body.removeChild(a);
+                    URL.revokeObjectURL(a.href);
+                }, 100);
+                
+                // Show notification to guide users about directory selection
+                showSaveNotification();
+                
+            } catch (error) {
+                alert('Error saving file: ' + error.message);
+            }
+        }
+        
+        function showSaveNotification() {
+            saveNotification.style.display = 'block';
+            saveNotification.textContent = 'Your browser should now show a save dialog where you can choose the directory.';
+            
+            // Auto-hide after 5 seconds
+            setTimeout(() => {
+                saveNotification.style.display = 'none';
+            }, 5000);
+        }
+
+        function toggleSearch() {
+            searchContainer.classList.toggle('hidden');
+            if (!searchContainer.classList.contains('hidden')) {
+                searchInput.focus();
+                // Initialize with default settings
+                if (!searchInput.value) {
+                    caseSensitive.checked = true;
+                    useRegExp.checked = false;
+                    matchWholeWord.checked = false;
+                    wrapAround.checked = true;
+                    updateSearchHelp();
+                }
+            } else {
+                // Return focus to editor when closing search
+                setTimeout(() => {
+                    editor.focus();
+                }, 100);
+            }
+        }
+
+        function updateSearchHelp() {
+            let helpText = "";
+            
+            if (useRegExp.checked) {
+                helpText = "Regular expression search";
+                if (!caseSensitive.checked) {
+                    helpText += " (case insensitive)";
+                } else {
+                    helpText += " (case sensitive)";
+                }
+            } else {
+                if (caseSensitive.checked) {
+                    helpText = "Case sensitive text search";
+                } else {
+                    helpText = "Case insensitive text search";
+                }
+                
+                if (matchWholeWord.checked) {
+                    helpText += " with whole word matching";
+                }
+            }
+            
+            searchHelp.textContent = helpText;
+        }
+
+        function clearSearch() {
+            searchMatches = [];
+            currentMatchIndex = -1;
+            matchInfo.textContent = 'Matches: 0';
+            lastSearchRegex = null;
+        }
+        
+        function updateStatusBar() {
+            const value = editor.value;
+            const startPos = savedCursorPosition.start;
+            const endPos = savedCursorPosition.end;
+            
+            // Handle selection
+            if (startPos !== endPos) {
+                const selectionLength = endPos - startPos;
+                const lines = value.substring(0, startPos).split('\n');
+                const lineNum = lines.length;
+                const colNum = lines[lines.length - 1].length + 1;
+                cursorPosition.textContent = `Line: ${lineNum}, Col: ${colNum} (Selected: ${selectionLength} chars)`;
+            } else {
+                const lines = value.substring(0, startPos).split('\n');
+                const lineNum = lines.length;
+                const colNum = lines[lines.length - 1].length + 1;
+                cursorPosition.textContent = `Line: ${lineNum}, Col: ${colNum}`;
+            }
+        }
+
+        function findFromCursor() {
+            const searchTerm = searchInput.value;
+            if (!searchTerm) {
+                clearSearch();
+                return;
+            }
+            
+            try {
+                let regexPattern = searchTerm;
+                let flags = caseSensitive.checked ? "g" : "gi";
+                
+                if (useRegExp.checked) {
+                    // Use as regular expression directly
+                    try {
+                        lastSearchRegex = new RegExp(regexPattern, flags);
+                    } catch (e) {
+                        throw new Error("Invalid regular expression: " + e.message);
+                    }
+                } else {
+                    // Escape special regex characters for literal text search
+                    regexPattern = searchTerm.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+                    
+                    // Add word boundaries if "Match whole word" is checked
+                    if (matchWholeWord.checked) {
+                        regexPattern = '\\b' + regexPattern + '\\b';
+                    }
+                    
+                    lastSearchRegex = new RegExp(regexPattern, flags);
+                }
+                
+                // CRITICAL: Always use the saved cursor position for search start
+                const cursorPos = getSearchStartPosition();
+                
+                // Find all matches
+                searchMatches = [];
+                let match;
+                let text = editor.value;
+                
+                // Reset regex lastIndex to ensure we start from the beginning
+                lastSearchRegex.lastIndex = 0;
+                
+                while ((match = lastSearchRegex.exec(text)) !== null) {
+                    searchMatches.push({
+                        index: match.index,
+                        length: match[0].length,
+                        text: match[0]
+                    });
+                    
+                    // Prevent infinite loop with zero-length matches
+                    if (match[0].length === 0) {
+                        lastSearchRegex.lastIndex++;
+                    }
+                }
+                
+                matchInfo.textContent = `Matches: ${searchMatches.length}`;
+                
+                // If no matches found, exit
+                if (searchMatches.length === 0) {
+                    currentMatchIndex = -1;
+                    return;
+                }
+                
+                // Find the first match at or after the saved cursor position
+                let startIndex = -1;
+                
+                // Look for first match starting at or after cursor position
+                for (let i = 0; i < searchMatches.length; i++) {
+                    if (searchMatches[i].index >= cursorPos) {
+                        startIndex = i;
+                        break;
+                    }
+                }
+                
+                // If no matches found after cursor position
+                if (startIndex === -1) {
+                    if (wrapAround.checked) {
+                        // Wrap around to the beginning
+                        startIndex = 0;
+                        setTimeout(() => {
+                            alert("Search wrapped to beginning of document");
+                        }, 100);
+                    } else {
+                        // Use the last match
+                        startIndex = searchMatches.length - 1;
+                        setTimeout(() => {
+                            alert("No more matches found");
+                        }, 100);
+                    }
+                }
+                
+                currentMatchIndex = startIndex;
+                
+                // Highlight the match
+                const matchItem = searchMatches[currentMatchIndex];
+                editor.setSelectionRange(matchItem.index, matchItem.index + matchItem.length);
+                
+                // Update saved cursor position to the found match
+                savedCursorPosition.start = matchItem.index;
+                savedCursorPosition.end = matchItem.index + matchItem.length;
+                savedCursorPosition.timestamp = Date.now();
+                
+                updateStatusBar();
+                editor.focus();
+                
+            } catch (e) {
+                alert('Search error: ' + e.message);
+                matchInfo.textContent = 'Matches: 0';
+                searchMatches = [];
+                currentMatchIndex = -1;
+                lastSearchRegex = null;
+            }
+        }
+
+        function findNext() {
+            if (!searchInput.value) {
+                return;
+            }
+            
+            // CRITICAL: Always use the saved cursor position
+            const cursorPos = getSearchStartPosition();
+            
+            // If we have no matches or the search term has changed, perform a new search
+            if (searchMatches.length === 0 || !lastSearchRegex) {
+                findFromCursor();
+                return;
+            }
+            
+            // Check if search parameters have changed
+            let searchParamsChanged = false;
+            let currentFlags = caseSensitive.checked ? "g" : "gi";
+            let currentPattern = searchInput.value;
+            
+            if (useRegExp.checked) {
+                try {
+                    new RegExp(currentPattern, currentFlags);
+                } catch (e) {
+                    searchParamsChanged = true;
+                }
+            }
+            
+            if (searchParamsChanged || !lastSearchRegex || 
+                (useRegExp.checked && lastSearchRegex.source !== currentPattern) || 
+                (!useRegExp.checked && lastSearchRegex.source !== currentPattern.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))) {
+                findFromCursor();
+                return;
+            }
+            
+            // Find next match after current saved cursor position
+            let nextIndex = -1;
+            
+            // Start searching from the current cursor position
+            for (let i = 0; i < searchMatches.length; i++) {
+                if (searchMatches[i].index >= cursorPos) {
+                    // Don't select the current match if it's exactly at cursorPos
+                    // (unless it's a different match)
+                    if (searchMatches[i].index > cursorPos || 
+                        (searchMatches[i].index === cursorPos && 
+                         (currentMatchIndex === -1 || i !== currentMatchIndex))) {
+                        nextIndex = i;
+                        break;
+                    }
+                }
+            }
+            
+            // If no matches found after cursor position
+            if (nextIndex === -1) {
+                if (wrapAround.checked) {
+                    // Wrap around to the beginning
+                    nextIndex = 0;
+                    setTimeout(() => {
+                        alert("Search wrapped to beginning of document");
+                    }, 100);
+                } else {
+                    // Stay at the last match
+                    setTimeout(() => {
+                        alert("No more matches found");
+                    }, 100);
+                    return;
+                }
+            }
+            
+            currentMatchIndex = nextIndex;
+            const matchItem = searchMatches[currentMatchIndex];
+            editor.setSelectionRange(matchItem.index, matchItem.index + matchItem.length);
+            
+            // Update saved cursor position
+            savedCursorPosition.start = matchItem.index;
+            savedCursorPosition.end = matchItem.index + matchItem.length;
+            savedCursorPosition.timestamp = Date.now();
+            
+            updateStatusBar();
+            editor.focus();
+        }
+
+        function findPrevious() {
+            if (!searchInput.value) {
+                return;
+            }
+            
+            // CRITICAL: Always use the saved cursor position
+            const cursorPos = getSearchStartPosition();
+            
+            // If we have no matches or the search term has changed, perform a new search
+            if (searchMatches.length === 0 || !lastSearchRegex) {
+                findFromCursor();
+                // Then find the previous match from current position
+                if (searchMatches.length > 0) {
+                    findPrevious();
+                }
+                return;
+            }
+            
+            // Check if search parameters have changed
+            let searchParamsChanged = false;
+            let currentFlags = caseSensitive.checked ? "g" : "gi";
+            let currentPattern = searchInput.value;
+            
+            if (useRegExp.checked) {
+                try {
+                    new RegExp(currentPattern, currentFlags);
+                } catch (e) {
+                    searchParamsChanged = true;
+                }
+            }
+            
+            if (searchParamsChanged || !lastSearchRegex || 
+                (useRegExp.checked && lastSearchRegex.source !== currentPattern) || 
+                (!useRegExp.checked && lastSearchRegex.source !== currentPattern.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))) {
+                findFromCursor();
+                // Then find the previous match
+                if (searchMatches.length > 0) {
+                    findPrevious();
+                }
+                return;
+            }
+            
+            // Find previous match before current saved cursor position
+            let prevIndex = -1;
+            
+            // Search backwards from the end for a match that ends before cursor position
+            for (let i = searchMatches.length - 1; i >= 0; i--) {
+                if (searchMatches[i].index + searchMatches[i].length <= cursorPos) {
+                    prevIndex = i;
+                    break;
+                }
+            }
+            
+            // If no matches found before cursor position
+            if (prevIndex === -1) {
+                if (wrapAround.checked) {
+                    // Wrap around to the end
+                    prevIndex = searchMatches.length - 1;
+                    setTimeout(() => {
+                        alert("Search wrapped to end of document");
+                    }, 100);
+                } else {
+                    // Stay at the first match
+                    setTimeout(() => {
+                        alert("No more matches found");
+                    }, 100);
+                    return;
+                }
+            }
+            
+            currentMatchIndex = prevIndex;
+            const matchItem = searchMatches[currentMatchIndex];
+            editor.setSelectionRange(matchItem.index, matchItem.index + matchItem.length);
+            
+            // Update saved cursor position
+            savedCursorPosition.start = matchItem.index;
+            savedCursorPosition.end = matchItem.index + matchItem.length;
+            savedCursorPosition.timestamp = Date.now();
+            
+            updateStatusBar();
+            editor.focus();
+        }
+
+        function replaceText() {
+            if (!searchInput.value) {
+                alert('Please enter search text');
+                return;
+            }
+            
+            // CRITICAL: Always use the saved cursor position for replace operations
+            const cursorPos = getReplaceCursorPosition();
+            
+            // If there's no active search or selection, try to find from cursor
+            if (searchMatches.length === 0 || currentMatchIndex < 0 || 
+                currentMatchIndex >= searchMatches.length || 
+                cursorPos.start !== searchMatches[currentMatchIndex]?.index || 
+                cursorPos.end !== (searchMatches[currentMatchIndex]?.index + searchMatches[currentMatchIndex]?.length)) {
+                
+                // First check if there's a selection that matches our search term
+                if (cursorPos.start !== cursorPos.end) {
+                    const selectedText = editor.value.substring(cursorPos.start, cursorPos.end);
+                    const searchTerm = searchInput.value;
+                    
+                    // Check if selected text matches search term (considering case sensitivity)
+                    let matches = false;
+                    if (useRegExp.checked) {
+                        try {
+                            const flags = caseSensitive.checked ? "" : "i";
+                            const regex = new RegExp(`^${searchTerm}$`, flags);
+                            matches = regex.test(selectedText);
+                        } catch (e) {
+                            // Invalid regex, don't match
+                        }
+                    } else {
+                        if (caseSensitive.checked) {
+                            matches = selectedText === searchTerm;
+                        } else {
+                            matches = selectedText.toLowerCase() === searchTerm.toLowerCase();
+                        }
+                    }
+                    
+                    if (matches) {
+                        // Create a temporary match for this selection
+                        searchMatches = [{
+                            index: cursorPos.start,
+                            length: cursorPos.end - cursorPos.start,
+                            text: selectedText
+                        }];
+                        currentMatchIndex = 0;
+                    } else {
+                        // No match, perform search from cursor
+                        findFromCursor();
+                        if (searchMatches.length === 0) {
+                            alert('No matches found');
+                            return;
+                        }
+                    }
+                } else {
+                    // No selection, perform search from cursor
+                    findFromCursor();
+                    if (searchMatches.length === 0) {
+                        alert('No matches found');
+                        return;
+                    }
+                }
+            }
+            
+            // Make sure we have a valid match
+            if (currentMatchIndex < 0 || currentMatchIndex >= searchMatches.length) {
+                alert('No valid match selected');
+                return;
+            }
+            
+            const currentMatch = searchMatches[currentMatchIndex];
+            const replaceText = replaceInput.value;
+            
+            // Save current state for undo before making changes
+            saveUndoState(editor.value, currentMatch.index, currentMatch.index + currentMatch.length);
+            
+            // Replace the current match
+            const before = editor.value.substring(0, currentMatch.index);
+            const after = editor.value.substring(currentMatch.index + currentMatch.length);
+            editor.value = before + replaceText + after;
+            
+            // Calculate new cursor position (after replacement)
+            const newCursorPos = currentMatch.index + replaceText.length;
+            
+            // Adjust positions of remaining matches
+            const diff = replaceText.length - currentMatch.length;
+            for (let i = currentMatchIndex + 1; i < searchMatches.length; i++) {
+                searchMatches[i].index += diff;
+            }
+            
+            // Remove the current match from array
+            searchMatches.splice(currentMatchIndex, 1);
+            
+            // Update match info
+            matchInfo.textContent = `Matches: ${searchMatches.length}`;
+            
+            // Select next match if available
+            if (searchMatches.length > 0) {
+                // Find the next match after the replacement
+                let nextIndex = -1;
+                for (let i = 0; i < searchMatches.length; i++) {
+                    if (searchMatches[i].index >= newCursorPos) {
+                        nextIndex = i;
+                        break;
+                    }
+                }
+                
+                // If no matches after replacement position, wrap around or use first/last
+                if (nextIndex === -1) {
+                    if (wrapAround.checked) {
+                        nextIndex = 0;
+                    } else {
+                        nextIndex = searchMatches.length - 1;
+                    }
+                }
+                
+                currentMatchIndex = nextIndex;
+                const nextMatch = searchMatches[currentMatchIndex];
+                editor.setSelectionRange(nextMatch.index, nextMatch.index + nextMatch.length);
+                
+                // Update saved cursor position
+                savedCursorPosition.start = nextMatch.index;
+                savedCursorPosition.end = nextMatch.index + nextMatch.length;
+            } else {
+                currentMatchIndex = -1;
+                // Place cursor at the position after replacement
+                editor.setSelectionRange(newCursorPos, newCursorPos);
+                
+                // Update saved cursor position
+                savedCursorPosition.start = newCursorPos;
+                savedCursorPosition.end = newCursorPos;
+            }
+            
+            savedCursorPosition.timestamp = Date.now();
+            updateStatusBar();
+            editor.focus();
+        }
+
+        function replaceAllText() {
+            if (!searchInput.value) {
+                alert('Please enter search text');
+                return;
+            }
+            
+            // CRITICAL: Always use the saved cursor position
+            const originalCursorPos = getSearchStartPosition();
+            
+            // Build the replacement regex
+            let flags = caseSensitive.checked ? "g" : "gi";
+            let searchPattern = searchInput.value;
+            
+            if (!useRegExp.checked) {
+                // Escape special regex characters for literal text search
+                searchPattern = searchPattern.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+                
+                // Add word boundaries if "Match whole word" is checked
+                if (matchWholeWord.checked) {
+                    searchPattern = '\\b' + searchPattern + '\\b';
+                }
+            }
+            
+            try {
+                const replaceRegex = new RegExp(searchPattern, flags);
+                const replaceText = replaceInput.value;
+                
+                // Count matches before replacing
+                const matches = editor.value.match(replaceRegex);
+                const matchCount = matches ? matches.length : 0;
+                
+                if (matchCount === 0) {
+                    alert('No matches found');
+                    return;
+                }
+                
+                if (!confirm(`Replace all ${matchCount} occurrences?`)) {
+                    return;
+                }
+                
+                // Save current state for undo before making changes
+                saveUndoState(editor.value, originalCursorPos, originalCursorPos, true);
+                
+                // Perform replacement
+                editor.value = editor.value.replace(replaceRegex, replaceText);
+                
+                // Clear search matches
+                clearSearch();
+                
+                // Try to position cursor at a reasonable position
+                // Keep it at the same relative position if possible
+                const newCursorPos = Math.min(originalCursorPos, editor.value.length);
+                editor.setSelectionRange(newCursorPos, newCursorPos);
+                
+                // Update saved cursor position
+                savedCursorPosition.start = newCursorPos;
+                savedCursorPosition.end = newCursorPos;
+                savedCursorPosition.timestamp = Date.now();
+                
+                updateStatusBar();
+                editor.focus();
+                
+                // Notify user
+                setTimeout(() => {
+                    alert(`Replaced ${matchCount} occurrences`);
+                }, 100);
+                
+            } catch (e) {
+                alert('Error in replace operation: ' + e.message);
+            }
+        }
+
+        function handleEditorKeyDown(e) {
+            // Ctrl+F to toggle search
+            if (e.ctrlKey && e.key === 'f') {
+                e.preventDefault();
+                toggleSearch();
+                if (!searchContainer.classList.contains('hidden')) {
+                    searchInput.focus();
+                }
+            }
+            
+            // Ctrl+G to find next
+            if (e.ctrlKey && e.key === 'g') {
+                e.preventDefault();
+                findNext();
+            }
+            
+            // Ctrl+Shift+G to find previous
+            if (e.ctrlKey && e.shiftKey && e.key === 'g') {
+                e.preventDefault();
+                findPrevious();
+            }
+            
+            // Enter in search box should find next
+            if (e.key === 'Enter' && document.activeElement === searchInput) {
+                e.preventDefault();
+                if (e.shiftKey) {
+                    findPrevious();
+                } else {
+                    findNext();
+                }
+            }
+            
+            // Ctrl+H to toggle replace
+            if (e.ctrlKey && e.key === 'h') {
+                e.preventDefault();
+                toggleSearch();
+                if (!searchContainer.classList.contains('hidden')) {
+                    searchInput.focus();
+                }
+            }
+            
+            // We handle Ctrl+Z and Ctrl+Y in the keydown event above, so no need to handle here
+        }
+
+        // Initialize
+        updateStatusBar();
+        updateSearchHelp();
+        
+        // Initial cursor position setup
+        editor.addEventListener('mousedown', function() {
+            setTimeout(updateSavedCursorPosition, 0);
+        });
+        
+        // Save initial state
+        saveUndoState(editor.value, 0, 0);
+        
+        // Focus editor on load
+        window.addEventListener('load', function() {
+            editor.focus();
+            updateSavedCursorPosition();
+            
+            // Show a brief instruction on first load
+            setTimeout(() => {
+                saveNotification.style.display = 'block';
+                saveNotification.textContent = 'Tip: When you click "Save", your browser will let you choose where to save the file.';
+                setTimeout(() => {
+                    saveNotification.style.display = 'none';
+                }, 5000);
+            }, 1000);
+        });
+    </script>
+</body>
+</html>

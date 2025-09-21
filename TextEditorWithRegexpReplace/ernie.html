@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>WYSIWYG Editor</title>
+    <style>
+        .editor-container {
+            max-width: 800px;
+            margin: 0 auto;
+            border: 1px solid #ccc;
+            border-radius: 5px;
+            padding: 20px;
+            background: #fff;
+        }
+        
+        .toolbar {
+            margin-bottom: 10px;
+        }
+        
+        .toolbar button {
+            padding: 5px 10px;
+            margin-right: 5px;
+            cursor: pointer;
+        }
+        
+        #editor {
+            width: 100%;
+            min-height: 300px;
+            border: 1px solid #ddd;
+            padding: 10px;
+            border-radius: 3px;
+            overflow: auto;
+        }
+        
+        .regex-panel {
+            margin-top: 20px;
+            padding: 10px;
+            border: 1px solid #eee;
+            border-radius: 3px;
+        }
+        
+        .regex-panel input {
+            margin: 5px 0;
+            padding: 5px;
+            width: 100%;
+        }
+        
+        .regex-panel button {
+            margin-top: 10px;
+            padding: 5px 10px;
+        }
+    </style>
+</head>
+<body>
+    <div class="editor-container">
+        <div class="toolbar">
+            <button onclick="format('bold')">Bold</button>
+            <button onclick="format('italic')">Italic</button>
+            <button onclick="format('underline')">Underline</button>
+            <button onclick="format('insertUnorderedList')">Bullet List</button>
+            <button onclick="format('insertOrderedList')">Numbered List</button>
+            <button onclick="saveContent()">Save</button>
+        </div>
+        
+        <div id="editor" contenteditable="true"></div>
+        
+        <div class="regex-panel">
+            <h3>Regex Search & Replace</h3>
+            <input type="text" id="searchPattern" placeholder="Enter regex pattern">
+            <input type="text" id="replacePattern" placeholder="Enter replacement text">
+            <div>
+                <input type="checkbox" id="globalCheck" checked>
+                <label for="globalCheck">Global</label>
+                <input type="checkbox" id="caseCheck">
+                <label for="caseCheck">Case Sensitive</label>
+            </div>
+            <button onclick="searchRegex()">Search</button>
+            <button onclick="replaceRegex()">Replace</button>
+            <button onclick="replaceAllRegex()">Replace All</button>
+        </div>
+    </div>
+
+    <script>
+        // Formatting functions
+        function format(command) {
+            document.execCommand(command, false, null);
+        }
+
+        // Save functionality
+        function saveContent() {
+            const content = document.getElementById('editor').innerHTML;
+            const blob = new Blob([content], {type: 'text/html'});
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'editor-content.html';
+            a.click();
+            URL.revokeObjectURL(url);
+        }
+
+        // Regex functions
+        function getRegexFlags() {
+            return document.getElementById('globalCheck').checked ? 'g' : '' + 
+                   (document.getElementById('caseCheck').checked ? '' : 'i');
+        }
+
+        function searchRegex() {
+            const editor = document.getElementById('editor');
+            const search = document.getElementById('searchPattern').value;
+            const flags = getRegexFlags();
+            
+            if (!search) return;
+            
+            try {
+                const regex = new RegExp(search, flags);
+                let text = editor.innerText;
+                const matches = text.match(regex);
+                
+                if (matches) {
+                    alert(`Found ${matches.length} match(es)`);
+                } else {
+                    alert('No matches found');
+                }
+            } catch (e) {
+                alert('Invalid regex pattern');
+            }
+        }
+
+        function replaceRegex() {
+            replaceInternal(false);
+        }
+
+        function replaceAllRegex() {
+            replaceInternal(true);
+        }
+
+        function replaceInternal(replaceAll) {
+            const editor = document.getElementById('editor');
+            const search = document.getElementById('searchPattern').value;
+            const replace = document.getElementById('replacePattern').value;
+            const flags = getRegexFlags();
+            
+            if (!search) return;
+            
+            try {
+                const regex = new RegExp(search, flags);
+                const htmlContent = editor.innerHTML;
+                
+                // Process text nodes only
+                const newContent = htmlContent.replace(
+                    /(<[^>]+>)/g, 
+                    (match, htmlTag) => {
+                        if (/^<[^>]+>$/.test(htmlTag)) {
+                            return htmlTag;
+                        }
+                        return match.replace(regex, replace);
+                    }
+                );
+                
+                editor.innerHTML = newContent;
+                
+                if (!replaceAll) {
+                    alert('First match replaced');
+                }
+            } catch (e) {
+                alert('Invalid regex pattern');
+            }
+        }
+    </script>
+</body>
+</html>
