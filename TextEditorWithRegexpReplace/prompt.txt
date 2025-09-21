@@ -1,0 +1,1 @@
+Create a html file that is a plan text editor with new, open and save function. It should also have a case-sensitive text, non case-sensitive text and regexp search and replace function (replace 1 time and replace all times). The search and replace function should always start from line 1, column 1.
