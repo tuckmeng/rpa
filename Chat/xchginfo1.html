@@ -1,0 +1,220 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>File & Chat Sharing</title>
+  <style>
+    body { font-family: Arial, sans-serif; padding: 20px; }
+    textarea, input[type="text"] { width: 100%; }
+    textarea { height: 100px; margin-top: 5px; }
+    button { margin: 5px 0; }
+    #chatBox { border: 1px solid #ccc; padding: 10px; height: 150px; overflow-y: auto; background: #f9f9f9; margin-top: 10px; }
+    .section { margin-bottom: 20px; }
+  </style>
+</head>
+<body>
+  <h2>File Sharing & Chat</h2>
+
+  <div class="section">
+    <button onclick="createOffer()">Create Offer</button>
+    <textarea id="localOffer" placeholder="Your Offer (send to peer)"></textarea>
+  </div>
+
+  <div class="section">
+    <textarea id="remoteOffer" placeholder="Paste Remote Offer (from peer)"></textarea>
+    <button onclick="createAnswer()">Create Answer</button>
+    <textarea id="localAnswer" placeholder="Your Answer (send to peer)"></textarea>
+  </div>
+
+  <div class="section">
+    <textarea id="remoteAnswer" placeholder="Paste Remote Answer (from peer)"></textarea>
+    <button onclick="setRemoteAnswer()">Set Remote Answer</button>
+  </div>
+
+  <div class="section">
+    <input type="file" id="fileInput" />
+    <button onclick="sendFile()" disabled id="sendBtn">Send File</button>
+  </div>
+
+  <div class="section">
+    <div id="status">Status: Not connected</div>
+  </div>
+
+  <div class="section">
+    <h3>💬 Chat</h3>
+    <div id="chatBox"></div>
+    <input type="text" id="chatInput" placeholder="Type a message and hit Enter..." disabled />
+  </div>
+
+  <h3>📥 Received Files:</h3>
+  <div id="downloads"></div>
+
+  <script>
+    let pc;
+    let dataChannel;
+    let isInitiator = false;
+
+    let receivedBuffers = [];
+    let fileMetadata = null;
+
+    const statusEl = document.getElementById("status");
+    const chatBox = document.getElementById("chatBox");
+    const chatInput = document.getElementById("chatInput");
+
+    function logStatus(msg) {
+      statusEl.textContent = "Status: " + msg;
+    }
+
+    function appendChatMessage(text, fromPeer = false) {
+      const msg = document.createElement("div");
+      msg.textContent = (fromPeer ? "Peer: " : "You: ") + text;
+      msg.style.color = fromPeer ? "blue" : "green";
+      chatBox.appendChild(msg);
+      chatBox.scrollTop = chatBox.scrollHeight;
+    }
+
+    chatInput.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") {
+        const text = chatInput.value.trim();
+        if (text && dataChannel?.readyState === "open") {
+          const message = { type: "chat", data: text };
+          dataChannel.send(JSON.stringify(message));
+          appendChatMessage(text, false);
+          chatInput.value = "";
+        }
+      }
+    });
+
+    function createPeerConnection() {
+      pc = new RTCPeerConnection({
+        iceServers: [{ urls: 'stun:stun.l.google.com:19302' }]
+      });
+
+      pc.onicecandidate = () => {
+        if (pc.iceGatheringState === "complete") {
+          const localDesc = JSON.stringify(pc.localDescription);
+          if (isInitiator) {
+            document.getElementById("localOffer").value = localDesc;
+          } else {
+            document.getElementById("localAnswer").value = localDesc;
+          }
+        }
+      };
+
+      pc.ondatachannel = (event) => {
+        dataChannel = event.channel;
+        setupDataChannel();
+      };
+    }
+
+    function setupDataChannel() {
+      dataChannel.binaryType = "arraybuffer";
+
+      dataChannel.onopen = () => {
+        logStatus("Connected. You can chat and send files.");
+        document.getElementById("sendBtn").disabled = false;
+        chatInput.disabled = false;
+      };
+
+      dataChannel.onmessage = (event) => {
+        if (typeof event.data === "string") {
+          let msg;
+          try {
+            msg = JSON.parse(event.data);
+          } catch {
+            return;
+          }
+
+          if (msg.type === "chat") {
+            appendChatMessage(msg.data, true);
+          } else if (msg.type === "file-meta") {
+            fileMetadata = msg.data;
+            receivedBuffers = [];
+          }
+        } else {
+          // file chunk
+          receivedBuffers.push(event.data);
+          const receivedSize = receivedBuffers.reduce((acc, b) => acc + b.byteLength, 0);
+          logStatus(`Receiving ${fileMetadata.name} (${receivedSize}/${fileMetadata.size})`);
+
+          if (receivedSize >= fileMetadata.size) {
+            const blob = new Blob(receivedBuffers);
+            const a = document.createElement("a");
+            a.href = URL.createObjectURL(blob);
+            a.download = fileMetadata.name;
+            a.textContent = `⬇️ Download ${fileMetadata.name}`;
+            a.style.display = "block";
+            document.getElementById("downloads").appendChild(a);
+            receivedBuffers = [];
+            logStatus("File received.");
+          }
+        }
+      };
+    }
+
+    async function createOffer() {
+      isInitiator = true;
+      createPeerConnection();
+      dataChannel = pc.createDataChannel("data");
+      setupDataChannel();
+
+      const offer = await pc.createOffer();
+      await pc.setLocalDescription(offer);
+    }
+
+    async function createAnswer() {
+      isInitiator = false;
+      createPeerConnection();
+
+      const remoteOffer = document.getElementById("remoteOffer").value;
+      await pc.setRemoteDescription(new RTCSessionDescription(JSON.parse(remoteOffer)));
+
+      const answer = await pc.createAnswer();
+      await pc.setLocalDescription(answer);
+    }
+
+    async function setRemoteAnswer() {
+      const remoteAnswer = document.getElementById("remoteAnswer").value;
+      await pc.setRemoteDescription(new RTCSessionDescription(JSON.parse(remoteAnswer)));
+      logStatus("Connected. You can chat and send files.");
+      document.getElementById("sendBtn").disabled = false;
+      chatInput.disabled = false;
+    }
+
+    function sendFile() {
+      const fileInput = document.getElementById("fileInput");
+      const file = fileInput.files[0];
+      if (!file || !dataChannel || dataChannel.readyState !== "open") {
+        alert("Select a file and ensure connection is ready.");
+        return;
+      }
+
+      // Send file metadata
+      dataChannel.send(JSON.stringify({ type: "file-meta", data: { name: file.name, size: file.size } }));
+      logStatus(`Sending ${file.name}...`);
+
+      const chunkSize = 16 * 1024;
+      let offset = 0;
+
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        dataChannel.send(e.target.result);
+        offset += e.target.result.byteLength;
+
+        if (offset < file.size) {
+          readSlice(offset);
+        } else {
+          logStatus("File sent!");
+        }
+      };
+
+      function readSlice(o) {
+        const slice = file.slice(o, o + chunkSize);
+        reader.readAsArrayBuffer(slice);
+      }
+
+      readSlice(0);
+    }
+  </script>
+</body>
+</html>
