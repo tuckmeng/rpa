@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>PDF Inspector (Uncompress Streams)</title>
+<style>
+  body { font-family: sans-serif; padding: 20px; }
+  textarea { width: 100%; height: 600px; white-space: pre-wrap; }
+</style>
+</head>
+<body>
+<h1>PDF Inspector (Uncompress Streams)</h1>
+<input type="file" id="pdfInput" accept=".pdf">
+<br><br>
+<textarea id="output" placeholder="Output will appear here..."></textarea>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pako/2.1.0/pako.min.js"></script>
+<script>
+document.getElementById('pdfInput').addEventListener('change', async function(e){
+    const file = e.target.files[0];
+    const textarea = document.getElementById('output');
+    textarea.value = "Reading file...";
+    if(!file) return;
+
+    const arrayBuffer = await file.arrayBuffer();
+    const uint8 = new Uint8Array(arrayBuffer);
+    let text;
+    try {
+        text = new TextDecoder().decode(uint8);
+    } catch(e) {
+        textarea.value = "Unable to decode PDF as text.";
+        return;
+    }
+
+    const objectRegex = /(\d+\s0\sobj)([\s\S]*?)(endobj)/g;
+    let match;
+    let output = '';
+
+    while((match = objectRegex.exec(text)) !== null){
+        const objHeader = match[1]; // e.g., "12 0 obj"
+        const objContent = match[2];
+        output += objHeader + '\n';
+
+        if(objContent.includes('/FlateDecode') && objContent.includes('stream')){
+            const streamRegex = /stream([\s\S]*?)endstream/g;
+            let sMatch;
+            while((sMatch = streamRegex.exec(objContent)) !== null){
+                let rawStream = sMatch[1].trim();
+
+                // Convert string to bytes
+                const byteArray = new Uint8Array(rawStream.length);
+                for(let i=0;i<rawStream.length;i++) byteArray[i] = rawStream.charCodeAt(i);
+
+                try {
+                    const uncompressed = pako.inflateRaw(byteArray);
+                    const decoded = new TextDecoder().decode(uncompressed);
+                    output += '[Uncompressed Stream]\n' + decoded + '\n';
+                } catch(err) {
+                    output += '[Failed to decompress stream]\n';
+                }
+            }
+        } else {
+            output += objContent + '\n';
+        }
+
+        output += 'endobj\n\n';
+    }
+
+    if(output === ''){
+        textarea.value = "No PDF objects found. Possibly invalid PDF.";
+    } else {
+        textarea.value = output;
+    }
+});
+</script>
+</body>
+</html>
