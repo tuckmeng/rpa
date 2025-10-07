@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Image Object Detection (Drag & Drop)</title>
+  <style>
+    #drop-zone {
+      border: 2px dashed #999;
+      padding: 20px;
+      text-align: center;
+      color: #666;
+      margin-bottom: 10px;
+      cursor: pointer;
+    }
+    #drop-zone.hover {
+      border-color: #333;
+      color: #000;
+    }
+    img {
+      max-width: 100%;
+      height: auto;
+      display: block;
+      margin: 10px auto;
+    }
+    textarea {
+      width: 100%;
+      height: 150px;
+      font-family: monospace;
+      font-size: 14px;
+      margin-top: 10px;
+    }
+  </style>
+</head>
+<body>
+  <h2>Image Object Detection</h2>
+  <div id="drop-zone">Drag & drop an image here or click to select</div>
+  <input type="file" id="file-input" accept="image/*" style="display: none;">
+  <img id="preview" alt="Image preview will appear here" />
+  <textarea id="output" readonly placeholder="Detected objects will appear here..."></textarea>
+
+  <!-- TensorFlow.js + COCO-SSD -->
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.8.0/dist/tf.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/coco-ssd@2.2.2/dist/coco-ssd.min.js"></script>
+
+  <script>
+    const dropZone = document.getElementById('drop-zone');
+    const fileInput = document.getElementById('file-input');
+    const preview = document.getElementById('preview');
+    const output = document.getElementById('output');
+
+    let modelPromise = cocoSsd.load();
+
+    // Drag & drop events
+    dropZone.addEventListener('click', () => fileInput.click());
+
+    dropZone.addEventListener('dragover', (e) => {
+      e.preventDefault();
+      dropZone.classList.add('hover');
+    });
+
+    dropZone.addEventListener('dragleave', () => {
+      dropZone.classList.remove('hover');
+    });
+
+    dropZone.addEventListener('drop', (e) => {
+      e.preventDefault();
+      dropZone.classList.remove('hover');
+      const file = e.dataTransfer.files[0];
+      if (file && file.type.startsWith('image/')) {
+        handleImage(file);
+      }
+    });
+
+    // File input event
+    fileInput.addEventListener('change', (e) => {
+      const file = e.target.files[0];
+      if (file && file.type.startsWith('image/')) {
+        handleImage(file);
+      }
+    });
+
+    async function handleImage(file) {
+      output.value = 'Loading image...';
+
+      const reader = new FileReader();
+      reader.onload = async function (e) {
+        preview.src = e.target.result;
+
+        // Wait until image is fully loaded
+        preview.onload = async () => {
+          output.value = 'Loading model...';
+          const model = await modelPromise;
+
+          output.value = 'Detecting objects...';
+
+          const predictions = await model.detect(preview);
+          if (predictions.length > 0) {
+            const detected = predictions.map(p => `${p.class} (${Math.round(p.score * 100)}%)`);
+            output.value = detected.join('\n');
+          } else {
+            output.value = 'No objects detected.';
+          }
+        };
+      };
+      reader.readAsDataURL(file);
+    }
+  </script>
+<script>alert("Starting..");</script>
+</body>
+</html>
