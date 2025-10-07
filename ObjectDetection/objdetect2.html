@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Webcam Object Detection</title>
+  <style>
+    video {
+      border: 1px solid black;
+      max-width: 100%;
+      height: auto;
+    }
+    textarea {
+      width: 100%;
+      height: 150px;
+      margin-top: 10px;
+      font-family: monospace;
+      font-size: 14px;
+    }
+  </style>
+</head>
+<body>
+  <h2>Webcam Object Detection</h2>
+  <video id="webcam" autoplay muted playsinline width="640" height="480"></video>
+  <textarea id="output" readonly placeholder="Detected objects will appear here..."></textarea>
+
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.8.0/dist/tf.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/coco-ssd@2.2.2/dist/coco-ssd.min.js"></script>
+
+  <script>
+    async function setup() {
+      const video = document.getElementById('webcam');
+      const output = document.getElementById('output');
+
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        output.value = 'getUserMedia() not supported in this browser.';
+        return;
+      }
+
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+        video.srcObject = stream;
+      } catch (err) {
+        output.value = 'Error accessing webcam: ' + err.message;
+        return;
+      }
+
+      output.value = 'Loading model...';
+      let model;
+      try {
+        model = await cocoSsd.load();
+        output.value = 'Model loaded. Waiting for video to be ready...';
+      } catch (err) {
+        output.value = 'Error loading model: ' + err.message;
+        return;
+      }
+
+      // Poll for video readiness instead of relying on onloadeddata event
+      function waitForVideoReady() {
+        if (video.readyState >= 3) { // HAVE_FUTURE_DATA or better means video is playing
+          output.value = 'Video ready, starting detection...';
+          detectFrame();
+        } else {
+          output.value = 'Waiting for video to be ready...';
+          setTimeout(waitForVideoReady, 200);
+        }
+      }
+
+      async function detectFrame() {
+        try {
+          const predictions = await model.detect(video);
+          if (predictions.length > 0) {
+            const detectedObjects = [...new Set(predictions.map(p => p.class))];
+            output.value = detectedObjects.join('\n');
+          } else {
+            output.value = 'No objects detected';
+          }
+        } catch (err) {
+          output.value = 'Detection error: ' + err.message;
+        }
+        requestAnimationFrame(detectFrame);
+      }
+
+      waitForVideoReady();
+    }
+
+    setup();
+  </script>
+</body>
+</html>
