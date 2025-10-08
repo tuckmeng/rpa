@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Secure Markdown Viewer (Final Fixed)</title>
+  <script src="marked.min.js"></script>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 2em; background-color:#f5f5f5; }
+    #output { background:white; padding:1em; border-radius:6px; box-shadow:0 0 10px #ccc; word-wrap:break-word; }
+    input[type="file"] { margin-bottom:1em; }
+    pre { background:#eee; padding:0.5em; overflow-x:auto; }
+    code { background:#eee; padding:2px 4px; border-radius:3px; }
+  </style>
+</head>
+<body>
+  <h1>Secure Markdown File Viewer</h1>
+  <input type="file" id="fileInput" accept=".md,.markdown" />
+  <div id="output"></div>
+
+  <script>
+    // Configure marked safely
+    marked.setOptions({
+      mangle: false,
+      headerIds: false,
+      breaks: true,
+      gfm: true
+    });
+
+    // Allowed safe HTML tags
+    const SAFE_TAGS = [
+      'a', 'b', 'i', 'em', 'strong', 'u', 'br', 'p',
+      'pre', 'code', 'blockquote', 'hr',
+      'ul', 'ol', 'li',
+      'h1', 'h2', 'h3', 'h4', 'h5', 'h6'
+    ];
+
+    function escapeHtml(s) {
+      return String(s ?? '').replace(/[&<>"']/g, c => ({
+        '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'
+      }[c]));
+    }
+
+    function sanitizeHTML(input) {
+      const doc = new DOMParser().parseFromString(input, 'text/html');
+      const all = Array.from(doc.body.getElementsByTagName('*'));
+      for (const el of all) {
+        const tag = el.tagName.toLowerCase();
+        if (!SAFE_TAGS.includes(tag)) {
+          el.replaceWith(...Array.from(el.childNodes));
+          continue;
+        }
+
+        for (const attr of Array.from(el.attributes)) {
+          const name = attr.name.toLowerCase();
+          const value = attr.value.trim();
+          if (tag === 'a' && name === 'href') {
+            try {
+              const url = new URL(value, window.location.origin);
+              if (url.protocol === 'javascript:' || url.protocol === 'data:') {
+                el.removeAttribute('href');
+              } else {
+                el.setAttribute('href', url.href);
+                el.setAttribute('target', '_blank');
+                el.setAttribute('rel', 'noopener noreferrer');
+              }
+            } catch {
+              el.removeAttribute('href');
+            }
+          } else {
+            el.removeAttribute(name);
+          }
+        }
+      }
+      return doc.body.innerHTML;
+    }
+
+    const renderer = new marked.Renderer();
+
+    // Sanitize embedded HTML
+    renderer.html = html => sanitizeHTML(html);
+
+    // Safe link renderer (handles strings and objects)
+    renderer.link = function(href, title, text) {
+      const linkText = typeof text === 'string'
+        ? text
+        : (text && text.text)
+          ? text.text
+          : '';
+
+      const hrefStr = typeof href === 'string'
+        ? href
+        : (href && href.href)
+          ? href.href
+          : '';
+
+      const titleStr = typeof title === 'string'
+        ? title
+        : (title && title.text)
+          ? title.text
+          : '';
+
+      let safeHref = '#';
+      try {
+        const url = new URL(hrefStr, window.location.origin);
+        if (url.protocol !== 'javascript:' && url.protocol !== 'data:') {
+          safeHref = url.href;
+        }
+      } catch {
+        safeHref = hrefStr || '#';
+      }
+
+      const tAttr = titleStr ? ` title="${escapeHtml(titleStr)}"` : '';
+      const dispEsc = escapeHtml(linkText || safeHref);
+      return `<a href="${escapeHtml(safeHref)}"${tAttr} target="_blank" rel="noopener noreferrer">${dispEsc}</a>`;
+    };
+
+    // Autolink plain URLs (supports both strings and token objects)
+    renderer.text = function(token) {
+      const text = typeof token === 'string'
+        ? token
+        : (token && token.text)
+          ? token.text
+          : '';
+
+      const urlPattern = /((https?:\/\/|www\.)[^\s<]+)/g;
+      return escapeHtml(text).replace(urlPattern, rawUrl => {
+        let safe = rawUrl;
+        if (!/^https?:\/\//i.test(safe)) safe = 'http://' + safe;
+        try {
+          const parsed = new URL(safe);
+          if (parsed.protocol === 'javascript:' || parsed.protocol === 'data:') {
+            return escapeHtml(rawUrl);
+          }
+          return `<a href="${escapeHtml(parsed.href)}" target="_blank" rel="noopener noreferrer">${escapeHtml(rawUrl)}</a>`;
+        } catch {
+          return escapeHtml(rawUrl);
+        }
+      });
+    };
+
+    // File handling
+    const fileInput = document.getElementById('fileInput');
+    const output = document.getElementById('output');
+
+    fileInput.addEventListener('change', function () {
+      const file = this.files[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = function (e) {
+        const markdown = e.target.result;
+        const rawHTML = marked.parse(markdown, { renderer });
+        const safeHTML = sanitizeHTML(rawHTML);
+        output.innerHTML = safeHTML;
+      };
+      reader.readAsText(file);
+    });
+  </script>
+</body>
+</html>

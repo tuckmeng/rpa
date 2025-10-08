@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Secure Markdown Viewer (Safe HTML Allowed)</title>
+  <script src="marked.min.js"></script>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      margin: 2em;
+      background-color: #f5f5f5;
+    }
+    #output {
+      background: white;
+      padding: 1em;
+      border-radius: 5px;
+      box-shadow: 0 0 10px #ccc;
+      white-space: normal;
+      word-wrap: break-word;
+    }
+    input[type="file"] {
+      margin-bottom: 1em;
+    }
+    pre {
+      background-color: #eee;
+      padding: 0.5em;
+      overflow-x: auto;
+    }
+    code {
+      background-color: #eee;
+      padding: 2px 4px;
+      border-radius: 3px;
+    }
+  </style>
+</head>
+<body>
+
+  <h1>Secure Markdown File Viewer</h1>
+  <input type="file" id="fileInput" accept=".md,.markdown" />
+  <div id="output"></div>
+
+  <script>
+    // Configure marked
+    marked.setOptions({
+      mangle: false,
+      headerIds: false,
+    });
+
+    // Safe tag whitelist
+    const SAFE_TAGS = [
+      'b', 'i', 'em', 'strong', 'u', 'br', 'p',
+      'pre', 'code', 'blockquote', 'hr',
+      'ul', 'ol', 'li',
+      'h1', 'h2', 'h3', 'h4', 'h5', 'h6'
+    ];
+
+    // --- HTML sanitizer allowing only safe tags ---
+    function sanitizeHTML(input) {
+      const doc = new DOMParser().parseFromString(input, 'text/html');
+      const all = doc.body.getElementsByTagName('*');
+
+      for (const el of all) {
+        const tag = el.tagName.toLowerCase();
+        if (!SAFE_TAGS.includes(tag)) {
+          el.replaceWith(...el.childNodes); // strip tag but keep text
+          continue;
+        }
+
+        // Remove all attributes except "href" for <a>
+        for (const attr of Array.from(el.attributes)) {
+          const name = attr.name.toLowerCase();
+          const value = attr.value.trim();
+
+          // Only allow safe href for <a>
+          if (tag === 'a' && name === 'href') {
+            try {
+              const url = new URL(value, window.location.origin);
+              if (url.protocol === 'javascript:' || url.protocol === 'data:') {
+                el.removeAttribute(name);
+              }
+            } catch {
+              el.removeAttribute(name);
+            }
+          } else {
+            // Remove everything else (style, onclick, etc.)
+            el.removeAttribute(name);
+          }
+        }
+      }
+
+      return doc.body.innerHTML;
+    }
+
+    // --- Custom renderer to preserve safe HTML ---
+    const renderer = new marked.Renderer();
+    renderer.html = function(html) {
+      return sanitizeHTML(html);
+    };
+
+    // Ensure links are safe
+    renderer.link = function(href, title, text) {
+      try {
+        const url = new URL(href, window.location.origin);
+        if (url.protocol === 'javascript:' || url.protocol === 'data:') {
+          href = '#';
+        } else {
+          href = url.href;
+        }
+      } catch {
+        href = '#';
+      }
+      const t = title ? ` title="${title}"` : '';
+      return `<a href="${href}"${t} target="_blank" rel="noopener noreferrer">${text}</a>`;
+    };
+
+    // --- File handling ---
+    const fileInput = document.getElementById('fileInput');
+    const output = document.getElementById('output');
+
+    fileInput.addEventListener('change', function () {
+      const file = this.files[0];
+      if (!file) return;
+
+      const reader = new FileReader();
+      reader.onload = function (e) {
+        const markdown = e.target.result;
+        const rawHTML = marked.parse(markdown, { renderer });
+        const safeHTML = sanitizeHTML(rawHTML);
+        output.innerHTML = safeHTML;
+      };
+      reader.readAsText(file);
+    });
+  </script>
+
+</body>
+</html>
