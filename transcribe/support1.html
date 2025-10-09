@@ -1,0 +1,22 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Web Speech API Support Test</title>
+</head>
+<body>
+  <h1>Web Speech API Support Test</h1>
+  <p id="result">Checking support...</p>
+
+  <script>
+    const result = document.getElementById('result');
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+
+    if (SpeechRecognition) {
+      result.textContent = "✅ Your browser supports the Web Speech API (Speech Recognition).";
+    } else {
+      result.textContent = "❌ Your browser does NOT support the Web Speech API.";
+    }
+  </script>
+</body>
+</html>
