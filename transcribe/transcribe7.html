@@ -1,0 +1,234 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Multilingual Audio Transcription</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      padding: 20px;
+      max-width: 600px;
+      margin: auto;
+    }
+    h1 {
+      text-align: center;
+    }
+    #controls {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: center;
+      gap: 10px;
+      margin-bottom: 20px;
+    }
+    button, select {
+      padding: 10px 15px;
+      font-size: 16px;
+      min-width: 120px;
+    }
+    #transcript {
+      width: 100%;
+      height: 250px;
+      max-height: 70vh;
+      overflow-y: auto;
+      white-space: pre-wrap;
+      word-wrap: break-word;
+      font-size: 16px;
+      line-height: 1.4;
+      background-color: #fafafa;
+      resize: vertical;
+      border: 1px solid #ccc;
+      padding: 10px;
+      font-family: Arial, sans-serif;
+    }
+
+    @media (max-width: 480px) {
+      #transcript {
+        height: 200px;
+        max-height: 60vh;
+      }
+      button, select {
+        min-width: 100px;
+        font-size: 14px;
+        padding: 8px 10px;
+      }
+    }
+
+    @media (max-width: 768px) and (orientation: landscape) {
+      #transcript {
+        height: 150px;
+        max-height: 50vh;
+      }
+    }
+  </style>
+</head>
+<body>
+  <h1>Multilingual Audio Transcription</h1>
+
+  <div id="controls">
+    <button id="startBtn">Start Recording</button>
+    <button id="stopBtn" disabled>Stop Recording</button>
+    <button id="addLineBtn">Add Line</button>
+    <button id="saveBtn">Save Transcript</button>
+    <button id="copyBtn">Copy to Clipboard</button>
+    <button id="clearBtn">Clear</button>
+    <select id="languageSelect">
+      <option value="en-US" selected>English</option>
+      <option value="zh-CN">Chinese (Simplified)</option>
+      <option value="ms-MY">Malay</option>
+      <option value="ta-IN">Tamil</option>
+      <option value="ja-JP">Japanese</option>
+      <option value="ko-KR">Korean</option>
+      <option value="de-DE">German</option>
+      <option value="fr-FR">French</option>
+      <option value="es-ES">Spanish</option>
+    </select>
+  </div>
+
+  <textarea id="transcript" readonly></textarea>
+
+  <script>
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+
+    if (!SpeechRecognition) {
+      alert("Your browser does not support Speech Recognition. Please use Chrome or Edge.");
+    } else {
+      let recognition;
+      let finalTranscript = '';
+      let interimTranscript = '';
+      let language = document.getElementById('languageSelect').value;
+      let isRecording = false;
+      
+      const startBtn = document.getElementById('startBtn');
+      const stopBtn = document.getElementById('stopBtn');
+      const addLineBtn = document.getElementById('addLineBtn');
+      const saveBtn = document.getElementById('saveBtn');
+      const copyBtn = document.getElementById('copyBtn');
+      const clearBtn = document.getElementById('clearBtn');
+      const transcriptDiv = document.getElementById('transcript');
+      const languageSelect = document.getElementById('languageSelect');
+
+      // Request microphone access only once
+      function requestMicPermission(callback) {
+        navigator.mediaDevices.getUserMedia({ audio: true })
+          .then(stream => {
+            stream.getTracks().forEach(track => track.stop()); // release mic
+            callback();
+          })
+          .catch(err => {
+            console.error('Microphone access denied', err);
+            alert('Microphone permission is required.');
+          });
+      }
+
+      function setRecognitionSettings() {
+        recognition = new SpeechRecognition();
+        recognition.lang = language;
+        recognition.continuous = true;
+        recognition.interimResults = true;
+        recognition.maxAlternatives = 1; // Limit alternatives to reduce processing
+
+        recognition.onresult = (event) => {
+          interimTranscript = '';
+          for (let i = event.resultIndex; i < event.results.length; ++i) {
+            if (event.results[i].isFinal) {
+              finalTranscript += event.results[i][0].transcript + ' ';
+            } else {
+              interimTranscript += event.results[i][0].transcript;
+            }
+          }
+          transcriptDiv.value = finalTranscript + interimTranscript; // Update textarea
+          transcriptDiv.scrollTop = transcriptDiv.scrollHeight;
+        };
+
+        recognition.onerror = (event) => {
+          console.error('Recognition error:', event.error);
+        };
+
+        recognition.onend = () => {
+          if (isRecording) {
+            setTimeout(() => setRecognitionSettings(), 200); // Seamless restart
+          } else {
+            startBtn.disabled = false;
+            stopBtn.disabled = true;
+          }
+        };
+      }
+
+      // Start recognition
+      function startRecognition() {
+        requestMicPermission(() => {
+          isRecording = true;
+          setRecognitionSettings(); // Initialize recognition with current language
+          recognition.start();
+          startBtn.disabled = true;
+          stopBtn.disabled = false;
+        });
+      }
+
+      startBtn.onclick = () => {
+        if (!isRecording) {
+          startRecognition();
+        }
+      };
+
+      stopBtn.onclick = () => {
+        isRecording = false;
+        if (recognition) recognition.stop();
+        startBtn.disabled = false;
+        stopBtn.disabled = true;
+      };
+
+      // Add line functionality
+      addLineBtn.onclick = () => {
+        finalTranscript += '\n'; // Add a new line in the transcript
+        transcriptDiv.value = finalTranscript; // Update the textarea
+      };
+
+      // Add line using Enter key
+      transcriptDiv.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+          e.preventDefault(); // Prevent default Enter action
+          finalTranscript += '\n'; // Add a new line in the transcript
+          transcriptDiv.value = finalTranscript; // Update the textarea
+        }
+      });
+
+      saveBtn.onclick = () => {
+        const blob = new Blob([finalTranscript], { type: 'text/plain' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = 'transcript.txt';
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+      };
+
+      copyBtn.onclick = () => {
+        navigator.clipboard.writeText(finalTranscript)
+          .then(() => alert('Transcript copied to clipboard!'))
+          .catch(err => console.error('Failed to copy text: ', err));
+      };
+
+      clearBtn.onclick = () => {
+        finalTranscript = '';
+        interimTranscript = '';
+        transcriptDiv.value = ''; // Clear the textarea
+      };
+
+      languageSelect.addEventListener('change', () => {
+        language = languageSelect.value;
+        if (isRecording) {
+          recognition.stop(); // Stop the current recognition session
+          setTimeout(() => {
+            setRecognitionSettings(); // Reconfigure the recognition with the new language
+            recognition.start(); // Restart the recognition
+          }, 500); // Small delay before restarting
+        }
+      });
+    }
+  </script>
+</body>
+</html>
