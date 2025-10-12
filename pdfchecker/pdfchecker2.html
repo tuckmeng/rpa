@@ -1,0 +1,336 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>PDF Inspector (Robust Decode + Debug)</title>
+  <style>
+    body { font-family: sans-serif; padding: 20px; }
+    textarea { width: 100%; height: 400px; white-space: pre-wrap; margin-bottom: 20px; }
+    #images { display: flex; flex-wrap: wrap; gap: 15px; }
+    #images figure { margin: 0; }
+    #images img { max-width: 300px; border: 1px solid #ccc; }
+    #images figcaption { font-size: 0.8em; text-align: center; margin-top: 4px; }
+  </style>
+</head>
+<body>
+  <h1>PDF Inspector (Robust Decode + Debug)</h1>
+  <input type="file" id="pdfInput" accept=".pdf" />
+  <br><br>
+  <textarea id="output" placeholder="Output will appear here..."></textarea>
+  <div id="images"></div>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pako/2.1.0/pako.min.js"></script>
+  <script>
+  // Utility: find a pattern of bytes inside a Uint8Array
+  function findPattern(buffer, pattern, start = 0) {
+    outer: for (let i = start; i <= buffer.length - pattern.length; i++) {
+      for (let j = 0; j < pattern.length; j++) {
+        if (buffer[i + j] !== pattern[j]) continue outer;
+      }
+      return i;
+    }
+    return -1;
+  }
+
+  // ASCIIHex decoding
+  function asciiHexDecode(data) {
+    const str = new TextDecoder().decode(data).replace(/[\s>]/g, '');
+    const out = [];
+    for (let i = 0; i < str.length; i += 2) {
+      let hex = str.substr(i, 2);
+      if (hex.length === 1) hex += '0';
+      out.push(parseInt(hex, 16));
+    }
+    return new Uint8Array(out);
+  }
+
+  // RunLength decoding
+  function runLengthDecode(data) {
+    const out = [];
+    let i = 0;
+    while (i < data.length) {
+      const len = data[i++];
+      if (len === 128) {
+        break; // EOD
+      }
+      if (len < 128) {
+        const copyLen = len + 1;
+        for (let j = 0; j < copyLen; j++) {
+          if (i < data.length) out.push(data[i++]);
+        }
+      } else {
+        const repeatCount = 257 - len;
+        const val = data[i++];
+        for (let j = 0; j < repeatCount; j++) {
+          out.push(val);
+        }
+      }
+    }
+    return new Uint8Array(out);
+  }
+
+  // LZW decoding (basic version)
+  function lzwDecode(data) {
+    const CLEAR_CODE = 256;
+    const EOI_CODE = 257;
+
+    let bitPos = 0;
+    function readBits(n) {
+      let code = 0;
+      for (let i = 0; i < n; i++) {
+        const bytePos = bitPos >> 3;
+        const bitOffset = bitPos & 7;
+        if (bytePos >= data.length) return null;
+        const bit = (data[bytePos] >> bitOffset) & 1;
+        code |= (bit << i);
+        bitPos++;
+      }
+      return code;
+    }
+
+    let codeSize = 9;
+    let dict = [];
+    for (let i = 0; i < 256; i++) dict[i] = [i];
+    dict[CLEAR_CODE] = [];
+    dict[EOI_CODE] = null;
+
+    let result = [];
+    let prev = null;
+
+    let code;
+    while ((code = readBits(codeSize)) !== null && code !== EOI_CODE) {
+      if (code === CLEAR_CODE) {
+        dict = [];
+        for (let i = 0; i < 256; i++) dict[i] = [i];
+        dict[CLEAR_CODE] = [];
+        dict[EOI_CODE] = null;
+        codeSize = 9;
+        prev = null;
+        continue;
+      }
+      let entry;
+      if (dict[code]) {
+        entry = dict[code];
+      } else if (code === dict.length && prev) {
+        entry = prev.concat(prev[0]);
+      } else {
+        throw new Error('LZW: invalid code ' + code);
+      }
+      result.push(...entry);
+      if (prev != null) {
+        dict.push(prev.concat(entry[0]));
+      }
+      prev = entry;
+      if (dict.length === (1 << codeSize) && codeSize < 12) {
+        codeSize++;
+      }
+    }
+
+    return new Uint8Array(result);
+  }
+
+  // Heuristic for Flate / fallback
+  function tryFlate(data) {
+    // Trim trailing nulls / whitespace
+    let trimmed = data;
+    while (trimmed.length > 0) {
+      const last = trimmed[trimmed.length - 1];
+      if (last === 0x00 || last === 0x0A || last === 0x0D || last === 0x20) {
+        trimmed = trimmed.subarray(0, trimmed.length - 1);
+      } else {
+        break;
+      }
+    }
+    // Try standard inflate
+    try {
+      const dec = pako.inflate(trimmed);
+      return { data: dec, method: 'inflate' };
+    } catch (e1) {
+      // Fallback: inflateRaw
+      try {
+        const dec2 = pako.inflateRaw(trimmed);
+        return { data: dec2, method: 'inflateRaw' };
+      } catch (e2) {
+        throw new Error(`FlateDecode fail: inflate error: ${e1.message || e1}, inflateRaw error: ${e2.message || e2}, trimmed length ${trimmed.length}`);
+      }
+    }
+  }
+
+  // Decode chain of filters
+  function decodeFilters(streamData, filters) {
+    if (!filters) return streamData;
+    if (!Array.isArray(filters)) filters = [filters];
+
+    let data = streamData;
+    for (const filter of filters) {
+      switch (filter) {
+        case '/ASCIIHexDecode':
+          data = asciiHexDecode(data);
+          break;
+        case '/RunLengthDecode':
+          data = runLengthDecode(data);
+          break;
+        case '/LZWDecode':
+          data = lzwDecode(data);
+          break;
+        case '/FlateDecode': {
+          const res = tryFlate(data);
+          console.log('FlateDecode used method:', res.method);
+          data = res.data;
+          break;
+        }
+        case '/DCTDecode':
+          // raw JPEG, do not alter
+          break;
+        default:
+          throw new Error('Unsupported filter: ' + filter);
+      }
+    }
+    return data;
+  }
+
+  // Parse /Filter entry from dictionary text
+  function parseFilters(dictText) {
+    const filterRegex = /\/Filter\s+(\[.*?\]|\/\S+)/s;
+    const m = dictText.match(filterRegex);
+    if (!m) return null;
+    let f = m[1].trim();
+    if (f.startsWith('[')) {
+      const arr = [];
+      const re = /\/(\S+)/g;
+      let mm;
+      while ((mm = re.exec(f)) !== null) {
+        arr.push('/' + mm[1]);
+      }
+      return arr;
+    } else {
+      return f;
+    }
+  }
+
+  document.getElementById('pdfInput').addEventListener('change', async (e) => {
+    const file = e.target.files[0];
+    const textarea = document.getElementById('output');
+    const imagesDiv = document.getElementById('images');
+    imagesDiv.innerHTML = '';
+    textarea.value = 'Reading file...';
+
+    if (!file) return;
+
+    try {
+      const buffer = await file.arrayBuffer();
+      const bytes = new Uint8Array(buffer);
+      const outputLines = [];
+
+      const objPattern = new TextEncoder().encode(' obj');
+      let searchPos = 0;
+
+      while (true) {
+        const objPos = findPattern(bytes, objPattern, searchPos);
+        if (objPos < 0) break;
+
+        let lineStart = objPos;
+        while (lineStart > 0 && bytes[lineStart - 1] !== 0x0A && bytes[lineStart - 1] !== 0x0D) {
+          lineStart--;
+        }
+
+        const objHeaderBytes = bytes.subarray(lineStart, objPos + 4);
+        const objHeader = new TextDecoder().decode(objHeaderBytes);
+        outputLines.push(objHeader);
+
+        const endObjPattern = new TextEncoder().encode('endobj');
+        const endObjPos = findPattern(bytes, endObjPattern, objPos);
+        if (endObjPos < 0) break;
+
+        const contentStart = objPos + 4;
+        const contentEnd = endObjPos;
+        const contentBytes = bytes.subarray(contentStart, contentEnd);
+        const contentText = new TextDecoder('utf-8', { fatal: false }).decode(contentBytes);
+
+        const filters = parseFilters(contentText);
+
+        if (contentText.includes('stream')) {
+          const streamPattern = new TextEncoder().encode('stream');
+          const sp = findPattern(contentBytes, streamPattern, 0);
+          if (sp < 0) {
+            outputLines.push('[stream keyword not found]');
+            outputLines.push(contentText.trim());
+            outputLines.push('endobj\n');
+            searchPos = endObjPos + 6;
+            continue;
+          }
+
+          let streamStart = sp + 6;
+          // Skip newline
+          if (contentBytes[streamStart] === 0x0D && contentBytes[streamStart + 1] === 0x0A) {
+            streamStart += 2;
+          } else if (contentBytes[streamStart] === 0x0A || contentBytes[streamStart] === 0x0D) {
+            streamStart += 1;
+          }
+
+          const endStreamPattern = new TextEncoder().encode('endstream');
+          const streamEnd = findPattern(contentBytes, endStreamPattern, streamStart);
+          if (streamEnd < 0) {
+            outputLines.push('[endstream not found]');
+            outputLines.push(contentText.trim());
+            outputLines.push('endobj\n');
+            searchPos = endObjPos + 6;
+            continue;
+          }
+
+          const streamData = contentBytes.subarray(streamStart, streamEnd);
+
+          try {
+            if (filters && (Array.isArray(filters) ? filters.includes('/DCTDecode') : filters === '/DCTDecode')) {
+              outputLines.push('[JPEG (DCTDecode) Stream detected]');
+              const blob = new Blob([streamData], { type: 'image/jpeg' });
+              const url = URL.createObjectURL(blob);
+              const figure = document.createElement('figure');
+              const img = document.createElement('img');
+              img.src = url;
+              const caption = document.createElement('figcaption');
+              caption.textContent = objHeader.trim();
+              figure.appendChild(img);
+              figure.appendChild(caption);
+              imagesDiv.appendChild(figure);
+              outputLines.push('[Image rendered below]');
+            } else {
+              const decoded = decodeFilters(streamData, filters);
+              let decodedStr;
+              try {
+                decodedStr = new TextDecoder().decode(decoded);
+              } catch {
+                decodedStr = '[Binary data – cannot decode to UTF-8 text]';
+              }
+              outputLines.push('[Decompressed Stream Start]');
+              outputLines.push(decodedStr);
+              outputLines.push('[Decompressed Stream End]');
+            }
+          } catch (err) {
+            // Debug info
+            const hexPreview = Array.from(streamData.slice(0, 16))
+              .map(b => b.toString(16).padStart(2, '0'))
+              .join(' ');
+            outputLines.push(`[Failed to decompress stream: ${err.message || err}]`);
+            outputLines.push(`[Stream data length: ${streamData.length}, first bytes (hex): ${hexPreview}]`);
+          }
+        } else {
+          outputLines.push(contentText.trim());
+        }
+
+        outputLines.push('endobj\n');
+        searchPos = endObjPos + 6;
+      }
+
+      if (outputLines.length === 0) {
+        textarea.value = 'No PDF objects found or invalid PDF.';
+      } else {
+        textarea.value = outputLines.join('\n');
+      }
+    } catch (err) {
+      textarea.value = `Error reading file: ${err.message || err}`;
+    }
+  });
+  </script>
+</body>
+</html>
