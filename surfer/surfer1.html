@@ -77,7 +77,7 @@
         // Function to navigate to the URL from the textbox
         function navigateToUrl() {
             const url = document.getElementById('urlInput').value;
-            const contentDiv = document.getElementById('content');
+            const htmlOutput = document.getElementById('htmlOutput');
 
             // Validate the URL
             if (url && (url.startsWith('http://') || url.startsWith('https://'))) {
@@ -85,8 +85,8 @@
                 if (isSameOrigin(url)) {
                     fetchContent(url);
                 } else {
-                    // Alert for cross-origin restrictions
-                    contentDiv.innerHTML = `<p class="alert">Sorry, loading content from external domains is not supported due to browser security restrictions.</p>`;
+                    // Show a message if the URL is cross-origin
+                    htmlOutput.value = `<p class="alert">Sorry, loading content from external domains is not supported due to browser security restrictions.</p>`;
                 }
             } else {
                 alert('Please enter a valid URL starting with http:// or https://');
