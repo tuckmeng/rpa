@@ -79,7 +79,8 @@
                 // Proceed with fetching the content after adding the CSP
                 fetchContent(url);
             } else {
-                alert('Please enter a valid URL starting with http:// or https://');
+                // Clear the previous content in case of invalid URL
+                htmlOutput.value = 'Please enter a valid URL starting with http:// or https://';
             }
         }
 
@@ -120,7 +121,7 @@
                     htmlOutput.value = data;
                 })
                 .catch(error => {
-                    // Display detailed error messages
+                    // Display detailed error messages and allow the user to try again
                     handleFetchError(error, htmlOutput);
                 });
         }
