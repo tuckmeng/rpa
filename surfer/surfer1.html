@@ -51,7 +51,7 @@
 <body>
 
     <h1>Surf URL</h1>
-    <p>Enter a URL and press "Go to URL" to view its content:</p>
+    <p>Enter a URL and press "Go to URL" to view its content, or press Enter:</p>
 
     <!-- Editable Textbox for URL -->
     <input type="text" id="urlInput" placeholder="Enter URL" value="https://www.example.com">
@@ -72,6 +72,9 @@
             if (url && (url.startsWith('http://') || url.startsWith('https://'))) {
                 // Create and add the CSP meta tag dynamically with connect-src based on the URL
                 addCSPMetaTag(url);
+
+                // Clear the previous content in the textarea
+                htmlOutput.value = `Loading content from ${url}...`;
 
                 // Proceed with fetching the content after adding the CSP
                 fetchContent(url);
@@ -102,7 +105,6 @@
         // Function to fetch the content of the URL and display it in the textarea
         function fetchContent(url) {
             const htmlOutput = document.getElementById('htmlOutput');
-            htmlOutput.value = `Loading content from ${url}...`;
 
             // Fetch the URL content (HTML only)
             fetch(url)
@@ -135,6 +137,14 @@
                 htmlOutput.value = `Unknown Error: ${error.message}`;
             }
         }
+
+        // Add event listener to detect Enter key press
+        document.getElementById('urlInput').addEventListener('keypress', function (event) {
+            if (event.key === 'Enter') {
+                event.preventDefault(); // Prevent form submission or default behavior
+                navigateToUrl(); // Trigger the URL navigation
+            }
+        });
     </script>
 
 </body>
