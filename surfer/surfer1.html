@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Voice Navigation with Toggle Microphone</title>
+    <title>Voice Navigation with Dynamic CSP v2</title>
     <style>
         body {
             font-family: Arial, sans-serif;
@@ -50,7 +50,7 @@
 </head>
 <body>
 
-    <h1>Voice Navigation with Toggle Microphone</h1>
+    <h1>Voice Navigation with Dynamic CSP</h1>
     <p>Enter a URL or use voice commands to navigate:</p>
 
     <!-- Editable Textbox for URL -->
@@ -81,16 +81,28 @@
 
             // Validate the URL
             if (url && (url.startsWith('http://') || url.startsWith('https://'))) {
-                // For same-origin URLs, we'll fetch and display the content
-                if (isSameOrigin(url)) {
-                    fetchContent(url);
-                } else {
-                    // Show a message if the URL is cross-origin
-                    htmlOutput.value = `<p class="alert">Sorry, loading content from external domains is not supported due to browser security restrictions.</p>`;
-                }
+                // Create and add the CSP meta tag dynamically
+                addCSPMetaTag(url);
+
+                // Proceed with fetching the content after adding the CSP
+                fetchContent(url);
             } else {
                 alert('Please enter a valid URL starting with http:// or https://');
             }
+        }
+
+        // Function to create and add a CSP meta tag to the head dynamically
+        function addCSPMetaTag(url) {
+            const domain = new URL(url).hostname;  // Extract the domain from the URL
+            const cspContent = `default-src 'self'; script-src 'self' https://${domain}; style-src 'self' 'unsafe-inline';`;
+
+            // Create the CSP meta tag
+            const metaTag = document.createElement('meta');
+            metaTag.httpEquiv = 'Content-Security-Policy';
+            metaTag.content = cspContent;
+
+            // Add the CSP meta tag to the <head> section
+            document.getElementsByTagName('head')[0].appendChild(metaTag);
         }
 
         // Function to fetch the content of the URL and display it in the textarea
