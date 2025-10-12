@@ -18,12 +18,6 @@
             border: 2px solid #ccc;
             border-radius: 5px;
         }
-        iframe {
-            width: 100%;
-            height: 500px;
-            border: 1px solid #ccc;
-            margin-top: 20px;
-        }
         button {
             padding: 10px 20px;
             font-size: 16px;
@@ -36,6 +30,18 @@
         }
         button:hover {
             background-color: #0056b3;
+        }
+        #content {
+            margin-top: 20px;
+            padding: 20px;
+            border: 1px solid #ccc;
+            border-radius: 5px;
+            min-height: 300px;
+            text-align: left;
+        }
+        .alert {
+            color: red;
+            margin-top: 20px;
         }
     </style>
 </head>
@@ -50,8 +56,8 @@
     <!-- Button to go to the URL -->
     <button onclick="navigateToUrl()">Go to URL</button>
 
-    <!-- Iframe to display the webpage -->
-    <iframe id="webIframe" src="https://www.example.com"></iframe>
+    <!-- Area to display the content of the webpage -->
+    <div id="content"></div>
 
     <!-- Annyang Speech Recognition Library -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/annyang/2.6.0/annyang.min.js"></script>
@@ -60,30 +66,46 @@
         // Function to navigate to the URL from the textbox
         function navigateToUrl() {
             const url = document.getElementById('urlInput').value;
-            const iframe = document.getElementById('webIframe');
-            // Check if the URL is valid (basic check)
+            const contentDiv = document.getElementById('content');
+
+            // Validate the URL
             if (url && (url.startsWith('http://') || url.startsWith('https://'))) {
-                iframe.src = url;
+                // For same-origin URLs, we'll fetch and display the content
+                if (isSameOrigin(url)) {
+                    fetchContent(url);
+                } else {
+                    // Alert for cross-origin restrictions
+                    contentDiv.innerHTML = `<p class="alert">Sorry, loading content from external domains is not supported due to browser security restrictions.</p>`;
+                }
             } else {
                 alert('Please enter a valid URL starting with http:// or https://');
             }
         }
 
-        // Check for microphone permission
-        function checkMicrophonePermission() {
-            if (navigator.permissions) {
-                navigator.permissions.query({ name: 'microphone' }).then(function (result) {
-                    if (result.state === 'granted') {
-                        // Microphone is already granted, start listening
-                        startListening();
-                    } else {
-                        alert('Please allow microphone access to use voice navigation.');
-                    }
+        // Function to fetch the content of the URL and display it in the page
+        function fetchContent(url) {
+            const contentDiv = document.getElementById('content');
+            contentDiv.innerHTML = `<p>Loading content from ${url}...</p>`;
+            
+            // Fetch the URL content (HTML only)
+            fetch(url)
+                .then(response => response.text())
+                .then(data => {
+                    // Dynamically insert the content into the page
+                    contentDiv.innerHTML = data;
+                })
+                .catch(error => {
+                    contentDiv.innerHTML = `<p class="alert">Error loading the content: ${error.message}</p>`;
                 });
-            } else {
-                // Fallback in case permissions API is not supported
-                alert('Microphone permission system is not supported in your browser.');
-                startListening();
+        }
+
+        // Function to check if the URL is same-origin (for security purposes)
+        function isSameOrigin(url) {
+            try {
+                const pageUrl = new URL(url);
+                return window.location.origin === pageUrl.origin;
+            } catch (e) {
+                return false; // Invalid URL
             }
         }
 
@@ -101,10 +123,10 @@
                         navigateToUrl();  // Navigate to the URL
                     },
 
-                    // Reload the page in the iframe
+                    // Reload the page content (if applicable)
                     'Reload the page': function () {
-                        const iframe = document.getElementById('webIframe');
-                        iframe.contentWindow.location.reload();  // Reload the iframe content
+                        const url = document.getElementById('urlInput').value;
+                        navigateToUrl();  // Reload the content
                     },
 
                     // Clear the URL text box
@@ -125,7 +147,7 @@
 
         // Start the process once the page is loaded
         window.onload = function() {
-            checkMicrophonePermission();  // Check microphone permission
+            startListening();  // Start voice commands once the page loads
         };
     </script>
 
