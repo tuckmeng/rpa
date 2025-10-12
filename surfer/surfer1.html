@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>v2 - Voice Navigation with Dynamic CSP v2</title>
+    <title>Voice Navigation with Dynamic CSP</title>
     <style>
         body {
             font-family: Arial, sans-serif;
@@ -81,7 +81,7 @@
 
             // Validate the URL
             if (url && (url.startsWith('http://') || url.startsWith('https://'))) {
-                // Create and add the CSP meta tag dynamically
+                // Create and add the CSP meta tag dynamically with connect-src based on the URL
                 addCSPMetaTag(url);
 
                 // Proceed with fetching the content after adding the CSP
@@ -94,7 +94,12 @@
         // Function to create and add a CSP meta tag to the head dynamically
         function addCSPMetaTag(url) {
             const domain = new URL(url).hostname;  // Extract the domain from the URL
-            const cspContent = `default-src 'self'; script-src 'self' https://${domain}; style-src 'self' 'unsafe-inline';`;
+            const cspContent = `
+                default-src 'self';
+                script-src 'self' https://${domain};
+                style-src 'self' 'unsafe-inline';
+                connect-src 'self' https://${domain};
+            `;
 
             // Create the CSP meta tag
             const metaTag = document.createElement('meta');
