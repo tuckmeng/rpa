@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>v3 - Voice Navigation with Dynamic CSP</title>
+    <title>Surf URL</title>
     <style>
         body {
             font-family: Arial, sans-serif;
@@ -50,30 +50,19 @@
 </head>
 <body>
 
-    <h1>Voice Navigation with Dynamic CSP</h1>
-    <p>Enter a URL or use voice commands to navigate:</p>
+    <h1>Surf URL</h1>
+    <p>Enter a URL and press "Go to URL" to view its content:</p>
 
     <!-- Editable Textbox for URL -->
     <input type="text" id="urlInput" placeholder="Enter URL" value="https://www.example.com">
 
-    <!-- Buttons Below the Textbox and Above the Textarea -->
-    <div>
-        <!-- Button to go to the URL -->
-        <button onclick="navigateToUrl()">Go to URL</button>
-
-        <!-- Button to toggle microphone on/off -->
-        <button id="micButton" onclick="toggleMicrophone()">Start Microphone</button>
-    </div>
+    <!-- Button to go to the URL -->
+    <button onclick="navigateToUrl()">Go to URL</button>
 
     <!-- Textarea to display the HTML content -->
     <textarea id="htmlOutput" readonly></textarea>
 
-    <!-- Annyang Speech Recognition Library -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/annyang/2.6.0/annyang.min.js"></script>
-
     <script>
-        let isMicrophoneOn = false;
-
         // Function to navigate to the URL from the textbox
         function navigateToUrl() {
             const url = document.getElementById('urlInput').value;
@@ -126,71 +115,6 @@
                     htmlOutput.value = `Error loading the content: ${error.message}`;
                 });
         }
-
-        // Function to check if the URL is same-origin (for security purposes)
-        function isSameOrigin(url) {
-            try {
-                const pageUrl = new URL(url);
-                return window.location.origin === pageUrl.origin;
-            } catch (e) {
-                return false; // Invalid URL
-            }
-        }
-
-        // Function to toggle the microphone on and off
-        function toggleMicrophone() {
-            if (isMicrophoneOn) {
-                annyang.abort();  // Stop listening
-                document.getElementById('micButton').textContent = 'Start Microphone';
-                isMicrophoneOn = false;
-            } else {
-                startListening();  // Start listening
-                document.getElementById('micButton').textContent = 'Stop Microphone';
-                isMicrophoneOn = true;
-            }
-        }
-
-        // Annyang Commands
-        function startListening() {
-            if (annyang) {
-                const commands = {
-                    // Go to a specific URL using voice command
-                    'Go to *url': function (url) {
-                        // Check if the URL starts with 'http://' or 'https://', if not, prepend 'https://'
-                        if (!url.startsWith('http://') && !url.startsWith('https://')) {
-                            url = 'https://' + url;
-                        }
-                        document.getElementById('urlInput').value = url;  // Update the textbox with the command
-                        navigateToUrl();  // Navigate to the URL
-                    },
-
-                    // Reload the page content (if applicable)
-                    'Reload the page': function () {
-                        const url = document.getElementById('urlInput').value;
-                        navigateToUrl();  // Reload the content
-                    },
-
-                    // Clear the URL text box
-                    'Clear the URL': function () {
-                        document.getElementById('urlInput').value = '';  // Clear the URL input
-                    }
-                };
-
-                // Add the commands to annyang
-                annyang.addCommands(commands);
-
-                // Start annyang
-                annyang.start();
-            } else {
-                alert("Annyang is not supported in your browser.");
-            }
-        }
-
-        // Start the process once the page is loaded
-        window.onload = function() {
-            // Initially, microphone is off
-            document.getElementById('micButton').textContent = 'Start Microphone';
-        };
     </script>
 
 </body>
