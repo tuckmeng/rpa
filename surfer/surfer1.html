@@ -106,14 +106,34 @@
 
             // Fetch the URL content (HTML only)
             fetch(url)
-                .then(response => response.text())
+                .then(response => {
+                    // Check for non-2xx status codes (e.g., 404, 403)
+                    if (!response.ok) {
+                        throw new Error(`Failed to fetch content. HTTP error ${response.status}: ${response.statusText}`);
+                    }
+                    return response.text();
+                })
                 .then(data => {
                     // Insert the HTML into the textarea
                     htmlOutput.value = data;
                 })
                 .catch(error => {
-                    htmlOutput.value = `Error loading the content: ${error.message}`;
+                    // Display detailed error messages
+                    handleFetchError(error, htmlOutput);
                 });
+        }
+
+        // Function to handle fetch errors and display detailed messages
+        function handleFetchError(error, htmlOutput) {
+            if (error.message.includes("Failed to fetch")) {
+                htmlOutput.value = "Network Error: Unable to reach the server. Please check your internet connection or the URL.";
+            } else if (error.message.includes("CORS")) {
+                htmlOutput.value = "CORS Error: The server is not allowing cross-origin requests. Try fetching the page directly in your browser.";
+            } else if (error.message.includes("Invalid URL")) {
+                htmlOutput.value = "Invalid URL: Please check the URL format and try again.";
+            } else {
+                htmlOutput.value = `Unknown Error: ${error.message}`;
+            }
         }
     </script>
 
