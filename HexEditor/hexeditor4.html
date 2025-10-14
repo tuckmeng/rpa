@@ -1,0 +1,268 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Smart Hex Editor</title>
+  <style>
+    body {
+      font-family: monospace;
+      background: #f4f4f4;
+      padding: 10px;
+    }
+    h1 {
+      font-size: 18px;
+    }
+    .controls {
+      margin-bottom: 10px;
+    }
+    .controls label {
+      margin-right: 10px;
+    }
+    .status-bar {
+      font-size: 12px;
+      margin-bottom: 4px;
+      font-weight: bold;
+    }
+    #offsetDisplay {
+      font-size: 12px;
+      margin-bottom: 4px;
+    }
+    #scrollContainer {
+      display: flex;
+      height: 400px;
+      overflow: hidden;
+    }
+    .hex-grid, .ascii-grid {
+      white-space: pre;
+      line-height: 1.4em;
+      font-family: monospace;
+      background: #fff;
+      padding: 4px;
+      border: 1px solid #aaa;
+      overflow-y: scroll;
+      overflow-x: auto;
+      height: 100%;
+      flex: 1;
+    }
+    .hex-byte, .ascii-char {
+      display: inline-block;
+      width: 2ch;
+    }
+    .cell {
+      background: none;
+      color: black;
+    }
+    .selected {
+      background: black;
+      color: white;
+      animation: blink 1s steps(2, start) infinite;
+    }
+    @keyframes blink {
+      0%, 50% { background-color: black; color: white; }
+      51%, 100% { background-color: white; color: black; }
+    }
+  </style>
+</head>
+<body>
+
+<h1>Hex Editor</h1>
+
+<div class="controls">
+  <input type="file" id="fileInput" accept=".*" />
+  <button id="loadButton">Load</button>
+  <button id="saveButton">Save</button>
+  <button id="resetButton">Reset</button>
+
+  <label><input type="radio" name="mode" value="view" checked> View</label>
+  <label><input type="radio" name="mode" value="edit"> Edit</label>
+</div>
+
+<div class="status-bar" id="statusBar">Mode: View | Area: HEX</div>
+<div id="offsetDisplay">Offset: 00000000</div>
+
+<div id="scrollContainer">
+  <div class="hex-grid" id="hexView"></div>
+  <div style="width: 10px;"></div>
+  <div class="ascii-grid" id="asciiView"></div>
+</div>
+
+<script>
+const fileInput = document.getElementById('fileInput');
+const loadButton = document.getElementById('loadButton');
+const saveButton = document.getElementById('saveButton');
+const resetButton = document.getElementById('resetButton');
+const hexView = document.getElementById('hexView');
+const asciiView = document.getElementById('asciiView');
+const offsetDisplay = document.getElementById('offsetDisplay');
+const statusBar = document.getElementById('statusBar');
+
+let binaryData = null;
+let cursor = { index: 0, area: 'hex' };
+let insertMode = false;
+let editMode = false;
+let undoStack = [], redoStack = [];
+
+const CHUNK_SIZE = 512;
+let scrollOffset = 0;
+
+loadButton.addEventListener('click', () => {
+  const file = fileInput.files[0];
+  if (file) {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      binaryData = new Uint8Array(e.target.result);
+      undoStack = [];
+      redoStack = [];
+      cursor = { index: 0, area: 'hex' };
+      renderChunk(0);
+      updateStatusBar();
+    };
+    reader.readAsArrayBuffer(file);
+  }
+});
+
+saveButton.addEventListener('click', () => {
+  if (!binaryData) return alert('No file loaded.');
+  const blob = new Blob([binaryData], { type: 'application/octet-stream' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'edited.bin';
+  a.click();
+  URL.revokeObjectURL(a.href);
+});
+
+resetButton.addEventListener('click', () => {
+  if (confirm("Are you sure you want to reset the editor? All unsaved changes will be lost.")) {
+    binaryData = null;
+    undoStack = [];
+    redoStack = [];
+    cursor = { index: 0, area: 'hex' };
+    insertMode = false;
+    editMode = false;
+    hexView.innerHTML = '';
+    asciiView.innerHTML = '';
+    offsetDisplay.innerText = 'Offset: 00000000';
+    statusBar.innerText = 'Mode: View | Area: HEX';
+    fileInput.value = '';
+  }
+});
+
+document.querySelectorAll('input[name="mode"]').forEach(radio => {
+  radio.addEventListener('change', () => {
+    editMode = document.querySelector('input[name="mode"]:checked').value === 'edit';
+    updateStatusBar();
+  });
+});
+
+function updateStatusBar() {
+  const modeStr = editMode ? (insertMode ? 'Insert' : 'Overwrite') : 'View';
+  statusBar.textContent = `Mode: ${modeStr} | Area: ${cursor.area.toUpperCase()}`;
+}
+
+function renderChunk(startIndex) {
+  if (!binaryData) return;
+  hexView.innerHTML = '';
+  asciiView.innerHTML = '';
+
+  const end = Math.min(startIndex + CHUNK_SIZE, binaryData.length);
+  scrollOffset = startIndex;
+
+  for (let i = startIndex; i < end; i += 16) {
+    let hexLine = '';
+    let asciiLine = '';
+
+    for (let j = 0; j < 16; j++) {
+      const idx = i + j;
+      if (idx >= binaryData.length) break;
+
+      const byte = binaryData[idx];
+      const hexByte = byte.toString(16).padStart(2, '0').toUpperCase();
+      const asciiChar = (byte >= 32 && byte < 127) ? String.fromCharCode(byte) : '.';
+
+      hexLine += `<span class="hex-byte cell${cursor.index === idx && cursor.area === 'hex' ? ' selected' : ''}" data-index="${idx}">${hexByte}</span> `;
+      asciiLine += `<span class="ascii-char cell${cursor.index === idx && cursor.area === 'ascii' ? ' selected' : ''}" data-index="${idx}">${asciiChar}</span>`;
+    }
+
+    hexView.innerHTML += hexLine + '\n';
+    asciiView.innerHTML += asciiLine + '\n';
+  }
+
+  offsetDisplay.innerText = `Offset: ${cursor.index.toString(16).padStart(8, '0').toUpperCase()}`;
+}
+
+function moveCursor(delta) {
+  const newIndex = cursor.index + delta;
+  if (newIndex >= 0 && newIndex < binaryData.length) {
+    cursor.index = newIndex;
+    const chunkStart = Math.floor(cursor.index / CHUNK_SIZE) * CHUNK_SIZE;
+    renderChunk(chunkStart);
+  }
+}
+
+function toggleArea() {
+  cursor.area = (cursor.area === 'hex') ? 'ascii' : 'hex';
+  renderChunk(scrollOffset);
+  updateStatusBar();
+}
+
+function updateByte(index, value) {
+  if (!binaryData || index >= binaryData.length) return;
+  undoStack.push(new Uint8Array(binaryData));
+  redoStack = [];
+  binaryData[index] = value;
+  renderChunk(scrollOffset);
+}
+
+document.addEventListener('keydown', (e) => {
+  if (!binaryData) return;
+
+  const index = cursor.index;
+
+  if (e.key === 'Tab') {
+    e.preventDefault();
+    toggleArea();
+  } else if (e.key === 'ArrowRight') moveCursor(1);
+  else if (e.key === 'ArrowLeft') moveCursor(-1);
+  else if (e.key === 'ArrowDown') moveCursor(16);
+  else if (e.key === 'ArrowUp') moveCursor(-16);
+  else if (e.key === ' ' && editMode) {
+    e.preventDefault();
+    updateByte(index, 0);
+  } else if (e.key === 'Insert' && editMode) {
+    e.preventDefault();
+    insertMode = !insertMode;
+    updateStatusBar();
+  } else if (e.key === 'Delete' && editMode && cursor.area === 'ascii') {
+    updateByte(index, 0);
+  } else if (e.key === 'z' && editMode && undoStack.length > 0) {
+    redoStack.push(new Uint8Array(binaryData));
+    binaryData = undoStack.pop();
+    renderChunk(scrollOffset);
+  } else if (e.key === 'y' && editMode && redoStack.length > 0) {
+    undoStack.push(new Uint8Array(binaryData));
+    binaryData = redoStack.pop();
+    renderChunk(scrollOffset);
+  } else if (e.key.length === 1 && editMode) {
+    const code = cursor.area === 'hex'
+      ? parseInt(e.key + '0', 16)
+      : e.key.charCodeAt(0);
+
+    if (!isNaN(code) && code >= 0 && code <= 255) {
+      updateByte(index, code);
+      moveCursor(1);
+    }
+  }
+});
+
+// Synchronized scrollbars
+hexView.addEventListener('scroll', () => {
+  asciiView.scrollTop = hexView.scrollTop;
+});
+asciiView.addEventListener('scroll', () => {
+  hexView.scrollTop = asciiView.scrollTop;
+});
+</script>
+
+</body>
+</html>
