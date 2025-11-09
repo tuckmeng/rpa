@@ -1,0 +1,1 @@
+This is a simple inline Markdown editor. The save button doesn't work if the interpretion of the markdown causes a javascript error. For such cases, just copy out the markdown code and save it as a file with .md extension.
