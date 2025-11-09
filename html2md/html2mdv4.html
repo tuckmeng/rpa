@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>HTML to Markdown Converter</title>
+    <!-- Include the Turndown.js library from local file -->
+    <script src="turndown.js"></script>
+</head>
+<body>
+    <h1>HTML to Markdown Converter</h1>
+
+    <!-- File input for selecting HTML file -->
+    <input type="file" id="htmlFile" accept=".html">
+    <br><br>
+    
+    <!-- Button to trigger conversion -->
+    <button onclick="convertToMarkdown()">Convert to Markdown</button>
+    <br><br>
+    
+    <!-- Output for displaying markdown content -->
+    <textarea id="markdownOutput" rows="15" cols="150" readonly></textarea>
+    <br><br>
+    
+    <!-- Download link for the converted markdown file -->
+    <a id="downloadLink" style="display:none;" href="#" download="converted.md">Download Markdown</a>
+
+    <script>
+        function convertToMarkdown() {
+            // Get the selected file
+            const fileInput = document.getElementById('htmlFile');
+            const file = fileInput.files[0];
+            
+            if (!file) {
+                alert("Please select an HTML file first.");
+                return;
+            }
+
+            // Create a file reader
+            const reader = new FileReader();
+            
+            reader.onload = function(e) {
+                // Get the HTML content
+                const htmlContent = e.target.result;
+                
+                // Create a TurndownService instance
+                const turndownService = new TurndownService();
+                
+                // Convert the HTML content to Markdown
+                let markdownContent = turndownService.turndown(htmlContent);
+                
+                // Remove hyperlinks while keeping the text (e.g., [text](URL) -> text)
+                markdownContent = markdownContent.replace(/\[([^\]]+)\]\([^\)]+\)/g, '$1');
+                
+                // Remove JavaScript code based on certain patterns
+                markdownContent = markdownContent
+                    .split('\n') // Split content by lines
+                    .filter(line => !line.match(/^!function\(/) && 
+                                     !line.match(/^!\[\]/) &&
+                                     !line.match(/^\(function/) && 
+                                     !line.match(/^window\./)) // Remove lines with specific patterns
+                    .join('\n'); // Join the remaining lines back together
+
+                // Replace curly quotes with straight quotes
+                markdownContent = markdownContent.replace(/[“”]/g, '"');
+                
+                // Replace multiple consecutive blank lines with a single blank line
+                markdownContent = markdownContent.replace(/\n{2,}/g, '\n\n'); // Ensure only one blank line
+                
+                // Output the markdown to the textarea
+                document.getElementById('markdownOutput').value = markdownContent;
+                
+                // Create a download link for the markdown file
+                const downloadLink = document.getElementById('downloadLink');
+                const blob = new Blob([markdownContent], { type: 'text/markdown' });
+                downloadLink.href = URL.createObjectURL(blob);
+                downloadLink.style.display = 'inline-block';  // Show the download link
+            };
+            
+            // Read the selected HTML file as text
+            reader.readAsText(file);
+        }
+    </script>
+</body>
+</html>
