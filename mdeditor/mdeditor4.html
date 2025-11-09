@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Markdown File Editor and Preview</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            display: flex;
+            justify-content: space-between;
+            padding: 20px;
+            height: 100vh;
+            margin: 0;
+            flex-direction: column;
+        }
+        .container {
+            display: flex;
+            width: 100%;
+            height: 100%;
+        }
+        .editor, .preview {
+            height: 100%;
+            padding: 10px;
+            border: 1px solid #ccc;
+            overflow-y: auto;
+        }
+        .editor {
+            width: 50%;
+            font-family: monospace;
+            display: flex;
+            flex-direction: column;
+        }
+        .preview {
+            width: 50%;
+            background-color: #f9f9f9;
+        }
+        .divider {
+            background-color: #ccc;
+            cursor: ew-resize;
+            width: 5px;
+            height: 100%;
+            user-select: none;
+        }
+        input[type="file"] {
+            margin-bottom: 20px;
+        }
+        h1 {
+            text-align: center;
+        }
+        textarea {
+            width: 100%;
+            height: 100%;
+            border: none;
+            font-family: monospace;
+            padding: 10px;
+            box-sizing: border-box;
+        }
+    </style>
+    <!-- Include marked.js from local file -->
+    <script src="marked.min.js"></script>
+</head>
+<body>
+    <div>
+        <h1>Markdown File Editor and Preview</h1>
+
+        <!-- Input for selecting a markdown file -->
+        <input type="file" id="fileInput" accept=".md" onchange="loadFile()" />
+	<button onclick="saveFile()">Save Edited Markdown</button> 
+
+        <!-- Container for the editor and preview sections with a draggable divider -->
+        <div class="container">
+            <!-- Textarea for editing markdown content -->
+            <div class="editor" id="editor-container">
+                <textarea id="editor" placeholder="Open a markdown file to edit"></textarea>
+            </div>
+
+            <!-- Divider for resizing -->
+            <div class="divider" id="divider"></div>
+
+            <!-- Preview section for rendered markdown content -->
+            <div class="preview" id="preview"></div>
+        </div>
+
+
+    </div>
+
+    <script>
+        // Function to replace curly quotes with straight quotes
+        function replaceCurlyQuotes(text) {
+            return text;  // Supposed to Replace curly quotes with straight quotes but it doesn't work
+        }
+
+        // Function to load the selected markdown file
+        function loadFile() {
+            const fileInput = document.getElementById('fileInput');
+            const file = fileInput.files[0];
+            if (!file) {
+                alert("Please select a markdown file.");
+                return;
+            }
+
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                // Read the file content and preprocess the text
+                let markdownContent = e.target.result;
+
+                // Preprocess: Replace curly quotes with straight quotes
+                markdownContent = replaceCurlyQuotes(markdownContent);
+
+                // Set the content of the editor to the preprocessed file content
+                document.getElementById('editor').value = markdownContent;
+
+                // Immediately update the preview
+                updatePreview();
+            };
+
+            // Read the file as text
+            reader.readAsText(file);
+        }
+
+        // Function to update the preview section
+        function updatePreview() {
+            const markdownContent = document.getElementById('editor').value;
+            // Use marked.js to convert markdown to HTML
+            const htmlContent = marked.parse(markdownContent); // Corrected marked syntax
+            document.getElementById('preview').innerHTML = htmlContent; // Set the HTML content in the preview
+        }
+
+        // Update the preview whenever the editor content changes
+        document.getElementById('editor').addEventListener('input', function() {
+            // Preprocess the editor content before updating the preview
+            let markdownContent = document.getElementById('editor').value;
+
+            // Preprocess: Replace curly quotes with straight quotes
+            markdownContent = replaceCurlyQuotes(markdownContent);
+
+            // Set the updated content back to the editor
+            document.getElementById('editor').value = markdownContent;
+
+            // Update the preview
+            updatePreview();
+        });
+
+        // Function to save the edited markdown content to a file
+        function saveFile() {
+            const markdownContent = document.getElementById('editor').value;
+            const blob = new Blob([markdownContent], { type: 'text/markdown' });
+            const url = URL.createObjectURL(blob);
+            
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = 'edited-markdown.md'; // Default file name
+            link.click(); // Trigger the download
+            URL.revokeObjectURL(url); // Clean up the object URL after the download
+        }
+
+        // Add event listeners to handle the resizing of the editor and preview sections
+        const divider = document.getElementById('divider');
+        const editor = document.querySelector('.editor');
+        const preview = document.querySelector('.preview');
+        const editorContainer = document.getElementById('editor-container');
+
+        let isResizing = false;
+
+        divider.addEventListener('mousedown', function(e) {
+            isResizing = true;
+            document.addEventListener('mousemove', handleMouseMove);
+            document.addEventListener('mouseup', handleMouseUp);
+        });
+
+        function handleMouseMove(e) {
+            if (!isResizing) return;
+            
+            // Calculate the new width of the editor
+            const newWidth = e.clientX;
+            const containerWidth = document.querySelector('.container').offsetWidth;
+
+            // Set the width of the editor and preview sections
+            if (newWidth > 100 && newWidth < containerWidth - 100) {
+                editor.style.width = `${newWidth}px`;
+                preview.style.width = `${containerWidth - newWidth - divider.offsetWidth}px`;
+
+                // Update textarea height dynamically to fill the editor area
+                editorContainer.style.height = `calc(100vh - 60px)`; // Subtract title and file input area height
+                document.getElementById('editor').style.height = `calc(100vh - 100px)`; // Subtract the height of input & button area
+            }
+        }
+
+        function handleMouseUp() {
+            isResizing = false;
+            document.removeEventListener('mousemove', handleMouseMove);
+            document.removeEventListener('mouseup', handleMouseUp);
+        }
+
+        // Make sure editor and preview sections resize dynamically when the window is resized
+        window.addEventListener('resize', function() {
+            const editorContainer = document.querySelector('.editor');
+            editorContainer.style.height = `calc(100vh - 60px)`;  // Keep editor height dynamic on resize
+            document.getElementById('editor').style.height = `calc(100vh - 100px)`; // Dynamic textarea height
+        });
+
+    </script>
+</body>
+</html>
