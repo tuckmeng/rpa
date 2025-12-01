@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Iterative OCR with Quality Comparison (Paste Only)</title>
+    <script src="https://cdn.jsdelivr.net/npm/tesseract.js@4.0.2/dist/tesseract.min.js"></script>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        #pasteArea {
+            width: 100%; padding: 40px; border: 3px dashed #aaa;
+            text-align: center; font-size: 20px; color: #444; border-radius: 8px;
+        }
+        #preview { max-width: 300px; margin-top: 20px; display: none; border: 1px solid #ccc; }
+        textarea { width: 100%; height: 150px; margin-top: 20px; }
+        #debug2 { margin-top: 20px; padding: 10px; border: 1px solid #ddd; background: #f8f8f8; }
+        #dictionarySection { 
+            margin: 20px 0; 
+            padding: 15px; 
+            border: 2px solid #4CAF50; 
+            border-radius: 8px; 
+            background: #f0f8f0;
+        }
+        #dictionaryInput { 
+            width: 100%; 
+            height: 80px; 
+            margin-top: 10px;
+            font-family: monospace;
+        }
+        .info-text {
+            color: #555;
+            font-size: 14px;
+            margin-top: 5px;
+        }
+        button {
+            margin-top: 10px;
+            padding: 8px 16px;
+            background: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        button:hover {
+            background: #45a049;
+        }
+    </style>
+</head>
+<body>
+
+<h2>Iterative OCR with Quality Comparison (Paste Only)</h2>
+
+<div id="dictionarySection">
+    <h3 style="margin-top: 0;">Customise Dictionary Words</h3>
+    <p class="info-text">
+        <strong>Purpose:</strong> Customising the dictionary improves OCR accuracy by helping the system 
+        recognise and prioritise words that are likely to appear in your specific documents. 
+        Add domain-specific terms (e.g., medical, legal, technical) to get better results.
+    </p>
+    <textarea id="dictionaryInput" placeholder="Enter words separated by commas (e.g., invoice, address, date, qty, amount)"></textarea>
+    <button onclick="updateDictionary()">Update Dictionary</button>
+    <p class="info-text" id="dictionaryStatus">Current dictionary: <span id="wordCount">13</span> words</p>
+</div>
+
+<div id="pasteArea">
+    <b>Click here and press Ctrl+V to paste an image</b><br>(Menlo-safe, no file uploads)
+</div>
+
+<img id="preview" />
+
+<h3>Debug OCR Text (Final Selected)</h3>
+<textarea id="debug"></textarea>
+
+<h3>Debug: Iteration Log</h3>
+<textarea id="debug2"></textarea>
+
+<script>
+// Global OCR results
+let ocrtext = {};
+let iterationLog = "";
+
+// Small dictionary for OCR comparison scoring (now customisable)
+let smallDictionary = ["invoice","address","date","qty","amount","total",
+                       "name","code","shipping","billing","unit","price","tax"];
+
+// Initialise the dictionary input with current values
+document.getElementById("dictionaryInput").value = smallDictionary.join(", ");
+
+function updateDictionary() {
+    const input = document.getElementById("dictionaryInput").value;
+    
+    // Parse the input: split by commas, trim whitespace, convert to lowercase, remove empty strings
+    smallDictionary = input
+        .split(",")
+        .map(word => word.trim().toLowerCase())
+        .filter(word => word.length > 0);
+    
+    // Update the word count display
+    document.getElementById("wordCount").textContent = smallDictionary.length;
+    
+    // Provide feedback
+    alert(`Dictionary updated with ${smallDictionary.length} words!`);
+}
+
+// -------------------- COMPARISON ALGORITHM --------------------
+function scoreOCRText(text) {
+    if (!text) return 0;
+
+    let lengthScore = text.length;
+
+    let words = text.toLowerCase().split(/[^a-z]/g);
+    let dictionaryMatches = words.filter(w => smallDictionary.includes(w)).length;
+
+    let uniqueChars = new Set(text).size;
+
+    return (1.0 * lengthScore) + (3.0 * dictionaryMatches) + (0.5 * uniqueChars);
+}
+// ---------------------------------------------------------------
+
+document.addEventListener("paste", async (event) => {
+    let items = event.clipboardData.items;
+
+    for (let item of items) {
+        if (item.type.indexOf("image") !== -1) {
+            let file = item.getAsFile();
+            processImage(file);
+        }
+    }
+});
+
+async function processImage(file) {
+    const preview = document.getElementById("preview");
+    preview.src = URL.createObjectURL(file);
+    preview.style.display = "block";
+
+    document.getElementById("debug").value = "Processing...";
+    document.getElementById("debug2").value = "";
+    iterationLog = "";
+
+    const baseImage = await loadImageElement(preview.src);
+
+    let scale = 1;
+    let iteration = 1;
+    let previousScore = 0;
+    let bestText = "";
+
+    while (true) {
+        let scaledCanvas = scaleImage(baseImage, scale);
+        let dataURL = scaledCanvas.toDataURL("image/png");
+
+        iterationLog += `Iteration ${iteration}, scale = ${scale}\n`;
+
+        let text = await runOCR(dataURL);
+        ocrtext[iteration] = text;
+
+        let score = scoreOCRText(text);
+
+        iterationLog += `  Score = ${score}, Length = ${text.length}\n\n`;
+
+        if (score > previousScore) {
+            previousScore = score;
+            bestText = text;
+        } else {
+            iterationLog += `Stopped: Score did not improve.\n`;
+            break;
+        }
+
+        scale *= 2;  // double the image size
+        iteration++;
+        if (iteration > 10) break;   // safety limit
+    }
+
+    document.getElementById("debug").value = bestText;
+    document.getElementById("debug2").value = iterationLog;
+
+}
+
+function loadImageElement(src) {
+    return new Promise(resolve => {
+        let img = new Image();
+        img.onload = () => resolve(img);
+        img.src = src;
+    });
+}
+
+function scaleImage(img, scale) {
+    let canvas = document.createElement("canvas");
+    canvas.width = img.width * scale;
+    canvas.height = img.height = img.height * scale;
+
+    let ctx = canvas.getContext("2d");
+    ctx.imageSmoothingEnabled = false; // keep edges sharp
+    ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+
+    return canvas;
+}
+
+async function runOCR(dataURL) {
+    let ocr = await Tesseract.recognize(dataURL, "eng");
+    return ocr.data.text.trim();
+}
+
+</script>
+
+</body>
+</html>
