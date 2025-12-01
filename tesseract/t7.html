@@ -1,0 +1,376 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Iterative OCR with Quality Comparison (Paste Only)</title>
+    <script src="https://cdn.jsdelivr.net/npm/tesseract.js@4.0.2/dist/tesseract.min.js"></script>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        #pasteArea {
+            width: 100%; padding: 40px; border: 3px dashed #aaa;
+            text-align: center; font-size: 20px; color: #444; border-radius: 8px;
+        }
+        #preview { max-width: 300px; margin-top: 20px; display: none; border: 1px solid #ccc; }
+        #processedPreview { max-width: 300px; margin-top: 20px; display: none; border: 1px solid #ccc; }
+        textarea { width: 100%; height: 150px; margin-top: 20px; }
+        #debug2 { margin-top: 20px; padding: 10px; border: 1px solid #ddd; background: #f8f8f8; }
+        .section { 
+            margin: 20px 0; 
+            padding: 15px; 
+            border: 2px solid #4CAF50; 
+            border-radius: 8px; 
+            background: #f0f8f0;
+        }
+        .section h3 { margin-top: 0; }
+        #dictionaryInput { 
+            width: 100%; 
+            height: 80px; 
+            margin-top: 10px;
+            font-family: monospace;
+        }
+        .info-text {
+            color: #555;
+            font-size: 14px;
+            margin-top: 5px;
+        }
+        button {
+            margin-top: 10px;
+            padding: 8px 16px;
+            background: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        button:hover {
+            background: #45a049;
+        }
+        .control-group {
+            margin: 10px 0;
+        }
+        label {
+            display: inline-block;
+            width: 200px;
+            font-weight: bold;
+        }
+        select, input[type="range"] {
+            width: 200px;
+        }
+        .slider-value {
+            display: inline-block;
+            margin-left: 10px;
+            min-width: 40px;
+        }
+        .preview-container {
+            display: flex;
+            gap: 20px;
+            flex-wrap: wrap;
+        }
+        .preview-box {
+            flex: 1;
+            min-width: 300px;
+        }
+    </style>
+</head>
+<body>
+
+<h2>Iterative OCR with Quality Comparison (Paste Only)</h2>
+
+<div class="section">
+    <h3>Customise Dictionary Words</h3>
+    <p class="info-text">
+        <strong>Purpose:</strong> Customising the dictionary improves OCR accuracy by helping the system 
+        recognise and prioritise words that are likely to appear in your specific documents. 
+        Add domain-specific terms (e.g., medical, legal, technical) to get better results.
+    </p>
+    <textarea id="dictionaryInput" placeholder="Enter words separated by commas (e.g., invoice, address, date, qty, amount)"></textarea>
+    <button onclick="updateDictionary()">Update Dictionary</button>
+    <p class="info-text" id="dictionaryStatus">Current dictionary: <span id="wordCount">13</span> words</p>
+</div>
+
+<div class="section">
+    <h3>OCR Settings for Tables</h3>
+    <p class="info-text">
+        <strong>Purpose:</strong> These settings improve OCR accuracy for tables and structured documents.
+        Pre-processing enhances image quality, while PSM mode tells Tesseract how to interpret the layout.
+    </p>
+    
+    <div class="control-group">
+        <label for="psmMode">Page Segmentation Mode:</label>
+        <select id="psmMode">
+            <option value="3">3 - Fully automatic (default)</option>
+            <option value="4">4 - Single column of text</option>
+            <option value="6" selected>6 - Uniform block (best for tables)</option>
+            <option value="11">11 - Sparse text</option>
+            <option value="12">12 - Sparse text with OSD</option>
+        </select>
+    </div>
+    
+    <div class="control-group">
+        <label for="enableBinarisation">
+            <input type="checkbox" id="enableBinarisation" checked> Enable Binarisation
+        </label>
+        <span class="info-text">(Convert to black & white)</span>
+    </div>
+    
+    <div class="control-group">
+        <label for="binarisationThreshold">Binarisation Threshold:</label>
+        <input type="range" id="binarisationThreshold" min="0" max="255" value="128">
+        <span class="slider-value" id="thresholdValue">128</span>
+    </div>
+    
+    <div class="control-group">
+        <label for="enableContrast">
+            <input type="checkbox" id="enableContrast" checked> Enhance Contrast
+        </label>
+    </div>
+    
+    <div class="control-group">
+        <label for="contrastLevel">Contrast Level:</label>
+        <input type="range" id="contrastLevel" min="0" max="100" value="30">
+        <span class="slider-value" id="contrastValue">30</span>
+    </div>
+    
+    <div class="control-group">
+        <label for="enableSharpen">
+            <input type="checkbox" id="enableSharpen"> Sharpen Image
+        </label>
+    </div>
+</div>
+
+<div id="pasteArea">
+    <b>Click here and press Ctrl+V to paste an image</b><br>(Menlo-safe, no file uploads)
+</div>
+
+<div class="preview-container">
+    <div class="preview-box">
+        <h4>Original Image</h4>
+        <img id="preview" />
+    </div>
+    <div class="preview-box">
+        <h4>Pre-processed Image</h4>
+        <img id="processedPreview" />
+    </div>
+</div>
+
+<h3>Debug OCR Text (Final Selected)</h3>
+<textarea id="debug"></textarea>
+
+<h3>Debug: Iteration Log</h3>
+<textarea id="debug2"></textarea>
+
+<script>
+// Global OCR results
+let ocrtext = {};
+let iterationLog = "";
+
+// Small dictionary for OCR comparison scoring (now customisable)
+let smallDictionary = ["invoice","address","date","qty","amount","total",
+                       "name","code","shipping","billing","unit","price","tax"];
+
+// Initialise the dictionary input with current values
+document.getElementById("dictionaryInput").value = smallDictionary.join(", ");
+
+// Update slider value displays
+document.getElementById("binarisationThreshold").addEventListener("input", function() {
+    document.getElementById("thresholdValue").textContent = this.value;
+});
+
+document.getElementById("contrastLevel").addEventListener("input", function() {
+    document.getElementById("contrastValue").textContent = this.value;
+});
+
+function updateDictionary() {
+    const input = document.getElementById("dictionaryInput").value;
+    
+    // Parse the input: split by commas, trim whitespace, convert to lowercase, remove empty strings
+    smallDictionary = input
+        .split(",")
+        .map(word => word.trim().toLowerCase())
+        .filter(word => word.length > 0);
+    
+    // Update the word count display
+    document.getElementById("wordCount").textContent = smallDictionary.length;
+    
+    // Provide feedback
+    alert(`Dictionary updated with ${smallDictionary.length} words!`);
+}
+
+// -------------------- PRE-PROCESSING FUNCTIONS --------------------
+function preprocessImage(canvas) {
+    const ctx = canvas.getContext("2d");
+    const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+    const data = imageData.data;
+    
+    // Apply contrast enhancement
+    if (document.getElementById("enableContrast").checked) {
+        const contrast = parseFloat(document.getElementById("contrastLevel").value);
+        const factor = (259 * (contrast + 255)) / (255 * (259 - contrast));
+        
+        for (let i = 0; i < data.length; i += 4) {
+            data[i] = factor * (data[i] - 128) + 128;       // Red
+            data[i + 1] = factor * (data[i + 1] - 128) + 128; // Green
+            data[i + 2] = factor * (data[i + 2] - 128) + 128; // Blue
+        }
+    }
+    
+    // Apply sharpening
+    if (document.getElementById("enableSharpen").checked) {
+        const tempData = new Uint8ClampedArray(data);
+        const width = canvas.width;
+        
+        // Simple sharpening kernel
+        for (let y = 1; y < canvas.height - 1; y++) {
+            for (let x = 1; x < canvas.width - 1; x++) {
+                for (let c = 0; c < 3; c++) {
+                    const i = (y * width + x) * 4 + c;
+                    const sharp = 5 * tempData[i]
+                        - tempData[i - 4]
+                        - tempData[i + 4]
+                        - tempData[i - width * 4]
+                        - tempData[i + width * 4];
+                    data[i] = Math.max(0, Math.min(255, sharp));
+                }
+            }
+        }
+    }
+    
+    // Apply binarisation (convert to black and white)
+    if (document.getElementById("enableBinarisation").checked) {
+        const threshold = parseInt(document.getElementById("binarisationThreshold").value);
+        
+        for (let i = 0; i < data.length; i += 4) {
+            // Convert to grayscale first
+            const gray = 0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2];
+            
+            // Apply threshold
+            const bw = gray > threshold ? 255 : 0;
+            
+            data[i] = bw;       // Red
+            data[i + 1] = bw;   // Green
+            data[i + 2] = bw;   // Blue
+        }
+    }
+    
+    ctx.putImageData(imageData, 0, 0);
+    return canvas;
+}
+
+// -------------------- COMPARISON ALGORITHM --------------------
+function scoreOCRText(text) {
+    if (!text) return 0;
+
+    let lengthScore = text.length;
+
+    let words = text.toLowerCase().split(/[^a-z]/g);
+    let dictionaryMatches = words.filter(w => smallDictionary.includes(w)).length;
+
+    let uniqueChars = new Set(text).size;
+
+    return (1.0 * lengthScore) + (3.0 * dictionaryMatches) + (0.5 * uniqueChars);
+}
+// ---------------------------------------------------------------
+
+document.addEventListener("paste", async (event) => {
+    let items = event.clipboardData.items;
+
+    for (let item of items) {
+        if (item.type.indexOf("image") !== -1) {
+            let file = item.getAsFile();
+            processImage(file);
+        }
+    }
+});
+
+async function processImage(file) {
+    const preview = document.getElementById("preview");
+    preview.src = URL.createObjectURL(file);
+    preview.style.display = "block";
+
+    document.getElementById("debug").value = "Processing...";
+    document.getElementById("debug2").value = "";
+    iterationLog = "";
+
+    const baseImage = await loadImageElement(preview.src);
+
+    let scale = 1;
+    let iteration = 1;
+    let previousScore = 0;
+    let bestText = "";
+
+    while (true) {
+        let scaledCanvas = scaleImage(baseImage, scale);
+        
+        // Apply pre-processing
+        scaledCanvas = preprocessImage(scaledCanvas);
+        
+        // Show pre-processed image on first iteration
+        if (iteration === 1) {
+            const processedPreview = document.getElementById("processedPreview");
+            processedPreview.src = scaledCanvas.toDataURL("image/png");
+            processedPreview.style.display = "block";
+        }
+        
+        let dataURL = scaledCanvas.toDataURL("image/png");
+
+        iterationLog += `Iteration ${iteration}, scale = ${scale}\n`;
+
+        let text = await runOCR(dataURL);
+        ocrtext[iteration] = text;
+
+        let score = scoreOCRText(text);
+
+        iterationLog += `  Score = ${score}, Length = ${text.length}\n\n`;
+
+        if (score > previousScore) {
+            previousScore = score;
+            bestText = text;
+        } else {
+            iterationLog += `Stopped: Score did not improve.\n`;
+            break;
+        }
+
+        scale *= 2;  // double the image size
+        iteration++;
+        if (iteration > 10) break;   // safety limit
+    }
+
+    document.getElementById("debug").value = bestText;
+    document.getElementById("debug2").value = iterationLog;
+
+}
+
+function loadImageElement(src) {
+    return new Promise(resolve => {
+        let img = new Image();
+        img.onload = () => resolve(img);
+        img.src = src;
+    });
+}
+
+function scaleImage(img, scale) {
+    let canvas = document.createElement("canvas");
+    canvas.width = img.width * scale;
+    canvas.height = img.height * scale;
+
+    let ctx = canvas.getContext("2d");
+    ctx.imageSmoothingEnabled = false; // keep edges sharp
+    ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+
+    return canvas;
+}
+
+async function runOCR(dataURL) {
+    const psmMode = document.getElementById("psmMode").value;
+    
+    let ocr = await Tesseract.recognize(dataURL, "eng", {
+        tessedit_psg_mode: parseInt(psmMode)
+    });
+    
+    return ocr.data.text.trim();
+}
+
+</script>
+
+</body>
+</html>
