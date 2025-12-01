@@ -1,0 +1,389 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Form Entity Extraction (client-side)</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <style>
+    body { font-family: system-ui, -apple-system, Arial, sans-serif; margin: 18px; }
+    h1 { margin-bottom: 6px; }
+    .row { display:flex; gap:16px; align-items:flex-start; }
+    #preview { border:1px solid #ddd; max-width:640px; max-height:480px; object-fit:contain; }
+    textarea { width:100%; min-height:140px; font-family: monospace; }
+    label { font-weight:600; display:block; margin:6px 0 3px; }
+    input[type="text"] { width:100%; padding:6px; }
+    .panel { border:1px solid #eee; padding:12px; border-radius:6px; background:#fafafa; }
+    button { padding:8px 12px; margin:4px; }
+    .grid { display:grid; grid-template-columns: repeat(2, 1fr); gap:12px; }
+    .badge { display:inline-block; padding:4px 8px; border-radius:12px; background:#eef; font-size:0.9em; margin:2px 4px; }
+    .success { background:#e6ffed; border:1px solid #b9f0c9; }
+    .warn { background:#fff8e6; border:1px solid #f1d89a; }
+    small { color:#666; }
+  </style>
+</head>
+<body>
+  <h1>Form Entity Extraction (client-side)</h1>
+  <p>Upload an image of the form and click <strong>Run OCR & Extract</strong>. Uses Tesseract.js in your browser.</p>
+
+  <div class="row">
+    <div style="flex:0 0 360px;">
+      <div class="panel">
+        <label for="imgfile">Choose image</label>
+        <input id="imgfile" type="file" accept="image/*"><br>
+        <label>Or paste image URL</label>
+        <input id="imgurl" type="text" placeholder="https://... (optional)"><br>
+        <div style="margin-top:8px;">
+          <button id="runBtn">Run OCR & Extract</button>
+          <button id="clearBtn">Clear</button>
+        </div>
+        <hr/>
+        <div>
+          <label>Preview</label>
+          <img id="preview" alt="preview" />
+          <div style="margin-top:8px;">
+            <small>Tip: crop or rotate the image before uploading if OCR is struggling.</small>
+          </div>
+        </div>
+      </div>
+      <div style="margin-top:12px;" class="panel">
+        <label>Extraction Controls</label>
+        <div>
+          <button id="downloadJson">Download JSON</button>
+          <button id="downloadCsv">Download CSV</button>
+        </div>
+      </div>
+    </div>
+
+    <div style="flex:1;">
+      <div class="panel">
+        <label>Extracted Entities (editable)</label>
+        <div class="grid">
+          <div>
+            <label>Case ID</label>
+            <input id="caseId" type="text">
+          </div>
+          <div>
+            <label>Name of Requestor</label>
+            <input id="requestor" type="text">
+          </div>
+          <div>
+            <label>Contact No.</label>
+            <input id="contact" type="text">
+          </div>
+          <div>
+            <label>Date of Request</label>
+            <input id="date" type="text">
+          </div>
+          <div>
+            <label>Time of Request</label>
+            <input id="time" type="text">
+          </div>
+          <div>
+            <label>Location of Fault</label>
+            <input id="location" type="text">
+          </div>
+        </div>
+
+        <label>Description of Fault</label>
+        <textarea id="description"></textarea>
+
+        <div style="display:flex; gap:12px; margin-top:8px;">
+          <div style="flex:1;">
+            <label>Type of Service (detected)</label>
+            <div id="serviceBadges"></div>
+          </div>
+          <div style="flex:1;">
+            <label>Severity (detected)</label>
+            <div id="severityBadges"></div>
+          </div>
+        </div>
+      </div>
+
+      <div style="margin-top:12px;" class="panel">
+        <label>Raw OCR Result</label>
+        <textarea id="rawText" readonly></textarea>
+      </div>
+    </div>
+  </div>
+
+  <!-- Tesseract.js CDN -->
+  <script src="https://cdn.jsdelivr.net/npm/tesseract.js@2.1.5/dist/tesseract.min.js"></script>
+  <script>
+    // DOM refs
+    const imgfile = document.getElementById('imgfile');
+    const imgurl = document.getElementById('imgurl');
+    const preview = document.getElementById('preview');
+    const runBtn = document.getElementById('runBtn');
+    const clearBtn = document.getElementById('clearBtn');
+    const rawText = document.getElementById('rawText');
+
+    const caseIdEl = document.getElementById('caseId');
+    const requestorEl = document.getElementById('requestor');
+    const contactEl = document.getElementById('contact');
+    const dateEl = document.getElementById('date');
+    const timeEl = document.getElementById('time');
+    const locationEl = document.getElementById('location');
+    const descriptionEl = document.getElementById('description');
+
+    const serviceBadges = document.getElementById('serviceBadges');
+    const severityBadges = document.getElementById('severityBadges');
+
+    const downloadJson = document.getElementById('downloadJson');
+    const downloadCsv = document.getElementById('downloadCsv');
+
+    // Known services to scan for
+    const KNOWN_SERVICES = [
+      'Electrical','Air-conditioning','Security System','Builder Work','Plumber',
+      'Fire Protection','AV','BMS','Others'
+    ];
+    const KNOWN_SEVERITY = ['Critical','Urgent','Normal','Nuisance'];
+
+    // utility: read file -> dataURL
+    function loadFileAsDataURL(file) {
+      return new Promise((resolve,reject)=>{
+        const fr = new FileReader();
+        fr.onload = ()=>resolve(fr.result);
+        fr.onerror = reject;
+        fr.readAsDataURL(file);
+      });
+    }
+
+    // display image from file or url
+    imgfile.addEventListener('change', async (e)=>{
+      const f = e.target.files && e.target.files[0];
+      if (!f) return;
+      const url = await loadFileAsDataURL(f);
+      preview.src = url;
+      imgurl.value = '';
+    });
+
+    imgurl.addEventListener('change', (e)=>{
+      const v = e.target.value.trim();
+      if (v) preview.src = v;
+    });
+
+    // Clear
+    clearBtn.addEventListener('click', ()=>{
+      preview.src = '';
+      rawText.value = '';
+      caseIdEl.value = requestorEl.value = contactEl.value = dateEl.value = timeEl.value = locationEl.value = '';
+      descriptionEl.value = '';
+      serviceBadges.innerHTML = ''; severityBadges.innerHTML = '';
+      imgfile.value = ''; imgurl.value = '';
+    });
+
+    // Main OCR + Extraction
+    runBtn.addEventListener('click', async ()=>{
+      const src = preview.src;
+      if (!src) { alert('Please choose an image file or paste an image URL first.'); return; }
+
+      runBtn.disabled = true;
+      runBtn.textContent = 'Running OCR...';
+
+      try {
+        const worker = Tesseract.createWorker({ logger: m => {
+          // optional logging: m.status / m.progress
+          // console.log(m);
+        }});
+        await worker.load();
+        await worker.loadLanguage('eng');
+        await worker.initialize('eng');
+        // boost for printed text is possible: set tessedit_char_whitelist? left default
+        const { data: { text } } = await worker.recognize(src);
+        await worker.terminate();
+
+        rawText.value = text;
+        const entities = extractEntitiesFromText(text);
+        populateUIFromEntities(entities);
+      } catch (err) {
+        console.error(err);
+        alert('OCR failed: ' + err.message);
+      } finally {
+        runBtn.disabled = false;
+        runBtn.textContent = 'Run OCR & Extract';
+      }
+    });
+
+    // extraction helpers
+    function linesFromText(t) {
+      return t.split(/\r?\n/).map(s=>s.trim()).filter(Boolean);
+    }
+
+    function findLineWithLabel(lines, labelRegex) {
+      for (let i=0;i<lines.length;i++) {
+        if (labelRegex.test(lines[i])) return i;
+      }
+      return -1;
+    }
+
+    function afterLabelValue(line, labelRegex) {
+      // try to extract text after colon, else after label
+      const m = line.match(labelRegex);
+      if (!m) return null;
+      // find colon in the matched text
+      const idx = line.indexOf(':');
+      if (idx >= 0 && idx < line.length-1) return line.slice(idx+1).trim();
+      // else return remainder after label token
+      return line.replace(m[0], '').trim();
+    }
+
+    function extractEntitiesFromText(text) {
+      const lines = linesFromText(text);
+      const joined = lines.join(' | ');
+
+      // Generic field extraction strategy:
+      // 1) Try to locate the label line and take text after colon on same line.
+      // 2) If no colon, use the next non-empty line as the value.
+      function getByLabel(labelRegex) {
+        const idx = findLineWithLabel(lines, labelRegex);
+        if (idx >= 0) {
+          const val = afterLabelValue(lines[idx], labelRegex);
+          if (val) return val;
+          // else try next line
+          if (idx+1 < lines.length) return lines[idx+1];
+        }
+        return null;
+      }
+
+      // Field extractions
+      let caseId = getByLabel(/case\s*id/i) || ( (joined.match(/Case\s*ID[:\s]*([A-Z0-9\/\-]+)/i) || [])[1] ) || null;
+      let requestor = getByLabel(/name\s*of\s*requestor/i) || ( (joined.match(/Name\s*of\s*Requestor[:\s]*([A-Z][A-Za-z ]+)/i) || [])[1] ) || null;
+      let contact = getByLabel(/contact\s*no/i) || ( (joined.match(/Contact\s*No[:\s]*([0-9\-+\s]+)/i) || [])[1] ) || null;
+      let date = getByLabel(/date\s*of\s*request/i) || ( (joined.match(/Date\s*of\s*Request[:\s]*([0-9\/\-\.\s]+)/i) || [])[1] ) || null;
+      let time = getByLabel(/time\s*of\s*request/i) || ( (joined.match(/Time\s*of\s*Request[:\s]*([0-9:apm\s]+)/i) || [])[1] ) || null;
+      let location = getByLabel(/location\s*of\s*fault/i) || ( (joined.match(/Location\s*of\s*Fault[:\s]*([A-Za-z0-9\-\s]+)/i) || [])[1] ) || null;
+
+      // Description: capture lines between "Description of Fault" and "Type of Service" or "Severity"
+      let desc = null;
+      const descIdx = findLineWithLabel(lines, /description\s*of\s*fault/i);
+      if (descIdx >= 0) {
+        let endIdx = lines.length;
+        for (let j = descIdx+1; j < lines.length; j++) {
+          if (/type\s*of\s*service/i.test(lines[j]) || /severity\s*of\s*fault/i.test(lines[j]) || /critical|urgent|normal|nuisance/i.test(lines[j])) { endIdx = j; break; }
+        }
+        desc = lines.slice(descIdx+1, endIdx).join(' ').trim();
+        // fallback: if afterLabelValue returned something on same line
+        if (!desc) {
+          const sameLineVal = afterLabelValue(lines[descIdx], /description\s*of\s*fault/i);
+          if (sameLineVal) desc = sameLineVal;
+        }
+      }
+
+      // Type of Service: try to detect known keywords anywhere
+      const serviceDetected = [];
+      for (const s of KNOWN_SERVICES) {
+        const regex = new RegExp('\\b' + s.replace(/[-\/]/g,'\\$&') + '\\b', 'i');
+        if (regex.test(joined)) serviceDetected.push(s);
+      }
+      // also check for generic matches like "Builder Work" spelled differently (builderwork)
+      if (serviceDetected.length === 0) {
+        // fuzzy-ish: search for 'builder' or 'builder work'
+        if (/\bbuilder\b/i.test(joined)) serviceDetected.push('Builder Work');
+        if (/\belectrical\b/i.test(joined)) serviceDetected.push('Electrical');
+        if (/\bplumber|plumbing\b/i.test(joined)) serviceDetected.push('Plumber');
+      }
+
+      // Severity
+      const severityDetected = [];
+      for (const s of KNOWN_SEVERITY) {
+        const regex = new RegExp('\\b' + s + '\\b', 'i');
+        if (regex.test(joined)) severityDetected.push(s);
+      }
+
+      return {
+        caseId, requestor, contact, date, time, location, description: desc,
+        services: serviceDetected, severity: severityDetected,
+        raw: text
+      };
+    }
+
+    // populate UI
+    function populateUIFromEntities(e) {
+      caseIdEl.value = e.caseId || '';
+      requestorEl.value = e.requestor || '';
+      contactEl.value = e.contact || '';
+      dateEl.value = e.date || '';
+      timeEl.value = e.time || '';
+      locationEl.value = e.location || '';
+      descriptionEl.value = e.description || '';
+
+      // services badges
+      serviceBadges.innerHTML = '';
+      if (e.services && e.services.length) {
+        e.services.forEach(s=>{
+          const el = document.createElement('span');
+          el.className = 'badge success';
+          el.textContent = s;
+          serviceBadges.appendChild(el);
+        });
+      } else {
+        const el = document.createElement('span');
+        el.className = 'badge warn';
+        el.textContent = 'No service detected — check raw text';
+        serviceBadges.appendChild(el);
+      }
+
+      severityBadges.innerHTML = '';
+      if (e.severity && e.severity.length) {
+        e.severity.forEach(s=>{
+          const el = document.createElement('span');
+          el.className = 'badge success';
+          el.textContent = s;
+          severityBadges.appendChild(el);
+        });
+      } else {
+        const el = document.createElement('span');
+        el.className = 'badge warn';
+        el.textContent = 'No severity detected';
+        severityBadges.appendChild(el);
+      }
+    }
+
+    // Download handlers
+    function currentEntitiesFromUI() {
+      return {
+        caseId: caseIdEl.value.trim(),
+        requestor: requestorEl.value.trim(),
+        contact: contactEl.value.trim(),
+        date: dateEl.value.trim(),
+        time: timeEl.value.trim(),
+        location: locationEl.value.trim(),
+        description: descriptionEl.value.trim(),
+        services: Array.from(serviceBadges.querySelectorAll('.badge.success')).map(b=>b.textContent),
+        severity: Array.from(severityBadges.querySelectorAll('.badge.success')).map(b=>b.textContent),
+        rawOCR: rawText.value
+      };
+    }
+
+    downloadJson.addEventListener('click', ()=>{
+      const data = currentEntitiesFromUI();
+      const blob = new Blob([JSON.stringify(data, null, 2)], {type:'application/json'});
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url; a.download = 'extracted_entities.json'; document.body.appendChild(a); a.click();
+      a.remove(); URL.revokeObjectURL(url);
+    });
+
+    downloadCsv.addEventListener('click', ()=>{
+      const d = currentEntitiesFromUI();
+      // flatten into simple CSV (one row)
+      const headers = ['caseId','requestor','contact','date','time','location','description','services','severity','rawOCR'];
+      const row = headers.map(h=>{
+        let v = d[h] ?? '';
+        if (Array.isArray(v)) v = v.join('; ');
+        // escape quotes
+        v = String(v).replace(/"/g,'""');
+        return `"${v}"`;
+      }).join(',');
+      const csv = headers.join(',') + '\n' + row;
+      const blob = new Blob([csv], {type:'text/csv'});
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url; a.download = 'extracted_entities.csv'; document.body.appendChild(a); a.click();
+      a.remove(); URL.revokeObjectURL(url);
+    });
+
+    // Quick demo autofill (optional): if you paste a known image URL into input, click Run.
+  </script>
+</body>
+</html>
