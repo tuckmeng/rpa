@@ -1,0 +1,229 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Iterative OCR with Flexible Entity Extraction (Paste Only)</title>
+    <script src="https://cdn.jsdelivr.net/npm/tesseract.js@4.0.2/dist/tesseract.min.js"></script>
+
+    <style>
+        body { font-family: Arial; margin: 20px; }
+        #pasteArea {
+            width: 100%; padding: 40px; border: 3px dashed #aaa;
+            text-align: center; font-size: 20px; color: #444; border-radius: 8px;
+        }
+        #preview { max-width: 300px; margin-top: 20px; display: none; border: 1px solid #ccc; }
+        textarea { width: 100%; height: 150px; margin-top: 20px; }
+        #entities, #debug2 {
+            margin-top: 20px; padding: 10px;
+            border: 1px solid #ddd; background: #f8f8f8;
+        }
+    </style>
+</head>
+<body>
+
+<h2>Iterative OCR + Flexible Entity Extraction</h2>
+
+<div id="pasteArea">
+    <b>Click here and press Ctrl+V to paste an image</b><br>
+    (Menlo-safe, no file uploads)
+</div>
+
+<img id="preview" />
+
+<h3>Debug OCR Text (Final Selected)</h3>
+<textarea id="debug"></textarea>
+
+<h3>Debug: Iteration Log</h3>
+<textarea id="debug2"></textarea>
+
+<h3>User Entity Extraction Rules (Optional JSON)</h3>
+<textarea id="customRules" placeholder="Leave empty to use defaults.
+Example:
+[
+  { &quot;name&quot;: &quot;Invoice Number&quot;, &quot;pattern&quot;: &quot;INV\\d+&quot;, &quot;flags&quot;:&quot;i&quot; },
+  { &quot;name&quot;: &quot;Amount&quot;, &quot;pattern&quot;: &quot;\\b\\$?\\d+\\.\\d{2}\\b&quot; }
+]"></textarea>
+
+<h3>Extracted Entities</h3>
+<div id="entities"></div>
+
+<script>
+/* --------------------------------------------------------------
+   GLOBALS
+-------------------------------------------------------------- */
+
+let ocrtext = {};
+let iterationLog = "";
+
+// Small dictionary for OCR scoring
+const smallDictionary = [
+    "invoice","address","date","qty","amount",
+    "total","name","code","unit","price","tax"
+];
+
+/* --------------------------------------------------------------
+   OCR COMPARISON SCORING ALGORITHM
+-------------------------------------------------------------- */
+function scoreOCRText(text) {
+    if (!text) return 0;
+
+    const lengthScore = text.length;
+    const words = text.toLowerCase().split(/[^a-z]/g);
+    const dictionaryMatches = words.filter(w => smallDictionary.includes(w)).length;
+    const uniqueChars = new Set(text).size;
+
+    return (1.0 * lengthScore)
+         + (3.0 * dictionaryMatches)
+         + (0.5 * uniqueChars);
+}
+
+/* --------------------------------------------------------------
+   PASTED IMAGE HANDLING
+-------------------------------------------------------------- */
+document.addEventListener("paste", async event => {
+    let items = event.clipboardData.items;
+
+    for (let item of items) {
+        if (item.type.indexOf("image") !== -1) {
+            let file = item.getAsFile();
+            processImage(file);
+        }
+    }
+});
+
+/* --------------------------------------------------------------
+   MAIN IMAGE PROCESSING
+-------------------------------------------------------------- */
+async function processImage(file) {
+    const preview = document.getElementById("preview");
+    preview.src = URL.createObjectURL(file);
+    preview.style.display = "block";
+
+    document.getElementById("debug").value = "Processing...";
+    document.getElementById("debug2").value = "";
+    iterationLog = "";
+
+    const baseImage = await loadImageElement(preview.src);
+
+    let scale = 1;
+    let iteration = 1;
+    let previousScore = 0;
+    let bestText = "";
+
+    while (true) {
+        let scaledCanvas = scaleImage(baseImage, scale);
+        let dataURL = scaledCanvas.toDataURL("image/png");
+
+        iterationLog += `Iteration ${iteration}, scale = ${scale}\n`;
+
+        let text = await runOCR(dataURL);
+        ocrtext[iteration] = text;
+
+        let score = scoreOCRText(text);
+
+        iterationLog += `  Score = ${score}, Length = ${text.length}\n\n`;
+
+        if (score > previousScore) {
+            previousScore = score;
+            bestText = text;
+        } else {
+            iterationLog += "Stopped: Score did not improve.\n";
+            break;
+        }
+
+        scale *= 2;
+        iteration++;
+        if (iteration > 10) break;
+    }
+
+    document.getElementById("debug").value = bestText;
+    document.getElementById("debug2").value = iterationLog;
+
+    const entities = extractEntitiesFlexible(bestText);
+    displayEntities(entities);
+}
+
+/* --------------------------------------------------------------
+   IMAGE UTILS
+-------------------------------------------------------------- */
+function loadImageElement(src) {
+    return new Promise(resolve => {
+        let img = new Image();
+        img.onload = () => resolve(img);
+        img.src = src;
+    });
+}
+
+function scaleImage(img, scale) {
+    let canvas = document.createElement("canvas");
+    canvas.width = img.width * scale;
+    canvas.height = img.height * scale;
+
+    let ctx = canvas.getContext("2d");
+    ctx.imageSmoothingEnabled = false;
+    ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+
+    return canvas;
+}
+
+async function runOCR(dataURL) {
+    let ocr = await Tesseract.recognize(dataURL, "eng");
+    return ocr.data.text.trim();
+}
+
+/* --------------------------------------------------------------
+   FLEXIBLE ENTITY EXTRACTION
+-------------------------------------------------------------- */
+function extractEntitiesFlexible(text) {
+
+    const userInput = document.getElementById("customRules").value.trim();
+    let rules = [];
+
+    // Use user custom rules if provided
+    if (userInput.length > 0) {
+        try {
+            rules = JSON.parse(userInput);
+        } catch (e) {
+            alert("Invalid JSON in custom entity rules. Falling back to defaults.");
+        }
+    }
+
+    // Default fallback rules if none provided
+    if (rules.length === 0) {
+        rules = [
+            { name: "Email", pattern: "[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}" },
+            { name: "Phone", pattern: "\\+?\\d[\\d\\s\\-()]{7,}\\d" },
+            { name: "Date",  pattern: "\\b\\d{1,2}[\\/\\-.]\\d{1,2}[\\/\\-.]\\d{2,4}\\b" },
+            { name: "Number", pattern: "\\b\\d+\\b" },
+            { name: "Identifier", pattern: "[A-Z]{2,5}\\d{2,10}" }
+        ];
+    }
+
+    let extracted = {};
+
+    for (let rule of rules) {
+        try {
+            const regex = new RegExp(rule.pattern, rule.flags || "g");
+            extracted[rule.name] = [...text.matchAll(regex)].map(m => m[0]);
+        } catch (e) {
+            extracted[rule.name] = [`(Invalid pattern: ${rule.pattern})`];
+        }
+    }
+
+    return extracted;
+}
+
+/* --------------------------------------------------------------
+   DISPLAY ENTITIES
+-------------------------------------------------------------- */
+function displayEntities(data) {
+    let html = "";
+    for (let key in data) {
+        html += `<b>${key}:</b> ${JSON.stringify(data[key])}<br>`;
+    }
+    document.getElementById("entities").innerHTML = html;
+}
+</script>
+
+</body>
+</html>
