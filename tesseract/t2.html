@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Image Entity Extractor (Paste Only)</title>
+    <script src="https://cdn.jsdelivr.net/npm/tesseract.js@4.0.2/dist/tesseract.min.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+        }
+        #pasteArea {
+            width: 100%;
+            padding: 40px;
+            border: 3px dashed #aaa;
+            text-align: center;
+            font-size: 20px;
+            color: #444;
+            border-radius: 8px;
+        }
+        #preview {
+            max-width: 300px;
+            margin-top: 20px;
+            display: none;
+            border: 1px solid #ccc;
+        }
+        textarea {
+            width: 100%;
+            height: 150px;
+            margin-top: 20px;
+        }
+        #entities {
+            margin-top: 20px;
+            padding: 10px;
+            border: 1px solid #ddd;
+            background: #f8f8f8;
+        }
+    </style>
+</head>
+<body>
+
+<h2>Image Entity Extraction (Paste Only)</h2>
+
+<div id="pasteArea">
+    <b>Click here and press Ctrl+V to paste an image</b><br>
+    (Menlo-safe, no file uploads)
+</div>
+
+<img id="preview" />
+
+<h3>Debug OCR Text</h3>
+<textarea id="debug"></textarea>
+
+<h3>Extracted Entities</h3>
+<div id="entities"></div>
+
+<script>
+document.addEventListener("paste", async (event) => {
+    let items = event.clipboardData.items;
+
+    for (let item of items) {
+        if (item.type.indexOf("image") !== -1) {
+            let file = item.getAsFile();
+            processImage(file);
+        }
+    }
+});
+
+async function processImage(file) {
+    // Display preview
+    const img = document.getElementById("preview");
+    img.src = URL.createObjectURL(file);
+    img.style.display = "block";
+
+    const debugBox = document.getElementById("debug");
+    const entitiesBox = document.getElementById("entities");
+
+    debugBox.value = "Processing OCR...";
+    entitiesBox.innerHTML = "";
+
+    // Convert to base64 for Tesseract
+    const reader = new FileReader();
+    reader.onload = async function () {
+        const result = reader.result;
+
+        // Run OCR
+        let ocr = await Tesseract.recognize(result, "eng", {
+            logger: m => console.log(m)
+        });
+        let text = ocr.data.text;
+        debugBox.value = text;
+
+        // Extract entities from text
+        let entities = extractEntities(text);
+        displayEntities(entities);
+    };
+    reader.readAsDataURL(file);
+}
+
+function extractEntities(text) {
+    let result = {
+        emails: [...text.matchAll(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g)].map(m => m[0]),
+        phones: [...text.matchAll(/\+?\d[\d\s\-()]{7,}\d/g)].map(m => m[0]),
+        dates: [...text.matchAll(/\b\d{1,2}[\/\-\.]\d{1,2}[\/\-\.]\d{2,4}\b/g)].map(m => m[0]),
+        numbers: [...text.matchAll(/\b\d+\b/g)].map(m => m[0]),
+        identifiers: [...text.matchAll(/[A-Z]{2,5}\d{2,10}/g)].map(m => m[0])
+    };
+    return result;
+}
+
+function displayEntities(data) {
+    const div = document.getElementById("entities");
+    div.innerHTML =
+        "<b>Emails:</b> " + JSON.stringify(data.emails) + "<br>" +
+        "<b>Phones:</b> " + JSON.stringify(data.phones) + "<br>" +
+        "<b>Dates:</b> " + JSON.stringify(data.dates) + "<br>" +
+        "<b>Numbers:</b> " + JSON.stringify(data.numbers) + "<br>" +
+        "<b>Identifiers:</b> " + JSON.stringify(data.identifiers);
+}
+</script>
+
+</body>
+</html>
