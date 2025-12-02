@@ -23,7 +23,7 @@ let dict = [];
 
 // --- Load dictionary ---
 async function loadDictionary(){
-    const txt = await fetch("ppocr_keys_v1.txt").then(r=>r.text());
+    const txt = await fetch("ppocr_keys_en.txt").then(r=>r.text());
     dict = txt.split("\n").map(s=>s.trim()).filter(s=>s.length>0);
 }
 
